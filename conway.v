@@ -2761,7 +2761,7 @@ Proof.
   apply element_concat_single.
 Qed.
 
-Theorem element_system_closed :
+Theorem element_system_closed_full :
   (forall n : nat, is_element_concatenation (iterate_audio n (element_to_word H))) /\
   (forall e : Element, is_element_concatenation (audioactive (element_to_word e))) /\
   (forall e : Element,
