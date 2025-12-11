@@ -1668,18 +1668,162 @@ Proof.
     reflexivity.
 Qed.
 
+Definition last_symbol (w : Word) : option Sym :=
+  match rev w with
+  | [] => None
+  | x :: _ => Some x
+  end.
+
+Definition first_symbol (w : Word) : option Sym :=
+  match w with
+  | [] => None
+  | x :: _ => Some x
+  end.
+
+Definition boundaries_differ (w1 w2 : Word) : Prop :=
+  match last_symbol w1, first_symbol w2 with
+  | Some a, Some b => a <> b
+  | _, _ => True
+  end.
+
+Lemma element_last_symbol : forall e,
+  last_symbol (element_to_word e) <> None.
+Proof.
+  intros e.
+  destruct e; vm_compute; discriminate.
+Qed.
+
+Lemma element_first_symbol : forall e,
+  first_symbol (element_to_word e) <> None.
+Proof.
+  intros e.
+  destruct e; vm_compute; discriminate.
+Qed.
+
+Definition element_last (e : Element) : Sym :=
+  match last_symbol (element_to_word e) with
+  | Some s => s
+  | None => S1
+  end.
+
+Definition element_first (e : Element) : Sym :=
+  match first_symbol (element_to_word e) with
+  | Some s => s
+  | None => S1
+  end.
+
+Lemma element_last_correct : forall e,
+  last_symbol (element_to_word e) = Some (element_last e).
+Proof.
+  intros e.
+  destruct e; vm_compute; reflexivity.
+Qed.
+
+Lemma element_first_correct : forall e,
+  first_symbol (element_to_word e) = Some (element_first e).
+Proof.
+  intros e.
+  destruct e; vm_compute; reflexivity.
+Qed.
+
+Definition decay_boundaries_ok (e : Element) : bool :=
+  let products := element_decays_to e in
+  let check_pair := fix check (l : list Element) : bool :=
+    match l with
+    | [] => true
+    | [_] => true
+    | e1 :: ((e2 :: _) as rest) =>
+        negb (sym_eqb (element_last e1) (element_first e2)) && check rest
+    end
+  in check_pair products.
+
+Lemma all_decay_boundaries_ok : forall e,
+  decay_boundaries_ok e = true.
+Proof.
+  intros e.
+  destruct e; vm_compute; reflexivity.
+Qed.
+
+Lemma audioactive_app_boundaries : forall w1 w2,
+  w1 <> [] -> w2 <> [] ->
+  boundaries_differ w1 w2 ->
+  audioactive (w1 ++ w2) = audioactive w1 ++ audioactive w2.
+Proof.
+  intros w1 w2 Hne1 Hne2 Hbdiff.
+  unfold audioactive.
+  rewrite app_length.
+  admit.
+Admitted.
+
+Lemma audioactive_single_element : forall e,
+  audioactive (element_to_word e) = elements_to_word (element_decays_to e).
+Proof.
+  intros e.
+  apply decay_correctness.
+Qed.
+
+Lemma audioactive_element_app : forall e w,
+  w <> [] ->
+  element_last e <> match first_symbol w with Some s => s | None => S1 end ->
+  audioactive (element_to_word e ++ w) =
+  audioactive (element_to_word e) ++ audioactive w.
+Proof.
+  intros e w Hne Hbdiff.
+  admit.
+Admitted.
+
+Lemma elements_first_symbol : forall e rest,
+  first_symbol (elements_to_word (e :: rest)) = Some (element_first e).
+Proof.
+  intros e rest.
+  unfold elements_to_word.
+  simpl.
+  unfold first_symbol.
+  destruct (element_to_word e) as [|x xs] eqn:Heq.
+  - destruct e; discriminate.
+  - unfold element_first.
+    unfold first_symbol.
+    rewrite Heq.
+    reflexivity.
+Qed.
+
+Fixpoint adjacent_boundaries_ok (es : list Element) : bool :=
+  match es with
+  | [] => true
+  | [_] => true
+  | e1 :: ((e2 :: _) as rest) =>
+      negb (sym_eqb (element_last e1) (element_first e2)) && adjacent_boundaries_ok rest
+  end.
+
+Lemma decay_adjacent_boundaries_ok : forall e,
+  adjacent_boundaries_ok (element_decays_to e) = true.
+Proof.
+  intros e.
+  destruct e; vm_compute; reflexivity.
+Qed.
+
+Lemma adjacent_boundaries_ok_cons : forall e1 e2 rest,
+  adjacent_boundaries_ok (e1 :: e2 :: rest) = true ->
+  element_last e1 <> element_first e2.
+Proof.
+  intros e1 e2 rest H.
+  simpl in H.
+  apply andb_true_iff in H.
+  destruct H as [Hneq _].
+  apply negb_true_iff in Hneq.
+  apply sym_eqb_neq.
+  exact Hneq.
+Qed.
+
+
 Lemma audioactive_elements_concat : forall es,
   audioactive (elements_to_word es) =
   elements_to_word (flat_map element_decays_to es).
 Proof.
   intros es.
   induction es as [|e rest IH].
-  - simpl.
-    reflexivity.
-  - simpl.
-    unfold elements_to_word at 1.
-    simpl.
-    destruct rest as [|e2 rest'].
+  - reflexivity.
+  - destruct rest as [|e2 rest'].
     + simpl.
       rewrite app_nil_r.
       rewrite app_nil_r.
