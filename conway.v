@@ -1744,6 +1744,351 @@ Proof.
   destruct e; vm_compute; reflexivity.
 Qed.
 
+Lemma count_run_length_sum : forall s w,
+  fst (count_run s w) + length (snd (count_run s w)) = length w.
+Proof.
+  intros s w.
+  induction w as [|x xs IH].
+  - reflexivity.
+  - simpl.
+    destruct (sym_eqb x s) eqn:Hxs.
+    + destruct (count_run s xs) as [n rest].
+      simpl.
+      simpl in IH.
+      lia.
+    + simpl.
+      lia.
+Qed.
+
+Lemma count_run_rest_suffix : forall s w,
+  exists prefix, w = prefix ++ snd (count_run s w).
+Proof.
+  intros s w.
+  induction w as [|x xs IH].
+  - exists []. reflexivity.
+  - simpl.
+    destruct (sym_eqb x s) eqn:Hxs.
+    + destruct IH as [prefix Hpre].
+      destruct (count_run s xs) as [n rest].
+      simpl.
+      exists (x :: prefix).
+      simpl.
+      rewrite Hpre.
+      reflexivity.
+    + exists [].
+      reflexivity.
+Qed.
+
+Lemma rev_nonempty : forall (A : Type) (l : list A),
+  l <> [] -> rev l <> [].
+Proof.
+  intros A l Hne.
+  destruct l as [|x xs].
+  - contradiction.
+  - simpl.
+    intro Hrev.
+    apply app_eq_nil in Hrev.
+    destruct Hrev as [_ Hcons].
+    discriminate.
+Qed.
+
+Lemma last_symbol_app_nonempty : forall w1 w2,
+  w2 <> [] ->
+  last_symbol (w1 ++ w2) = last_symbol w2.
+Proof.
+  intros w1 w2 Hne.
+  unfold last_symbol.
+  rewrite rev_app_distr.
+  pose proof (rev_nonempty Sym w2 Hne) as Hrevne.
+  destruct (rev w2) as [|z zs] eqn:Hrev.
+  - contradiction.
+  - simpl. reflexivity.
+Qed.
+
+Lemma last_symbol_cons_rest : forall x xs r rs,
+  snd (count_run x xs) = r :: rs ->
+  last_symbol (x :: xs) = last_symbol (r :: rs).
+Proof.
+  intros x xs r rs Hrest.
+  pose proof (count_run_rest_suffix x xs) as [prefix Hpre].
+  rewrite Hrest in Hpre.
+  rewrite Hpre.
+  change (x :: prefix ++ r :: rs) with ((x :: prefix) ++ (r :: rs)).
+  apply last_symbol_app_nonempty.
+  discriminate.
+Qed.
+
+Lemma match_head_app : forall (l1 l2 : list Sym),
+  l1 <> [] ->
+  match l1 ++ l2 with
+  | [] => None
+  | x :: _ => Some x
+  end = match l1 with
+        | [] => None
+        | x :: _ => Some x
+        end.
+Proof.
+  intros l1 l2 Hne.
+  destruct l1 as [|x xs].
+  - contradiction.
+  - reflexivity.
+Qed.
+
+Lemma last_symbol_cons_cons : forall x y ys,
+  last_symbol (x :: y :: ys) = last_symbol (y :: ys).
+Proof.
+  intros x y ys.
+  unfold last_symbol.
+  simpl.
+  apply match_head_app.
+  intro H.
+  apply app_eq_nil in H.
+  destruct H as [_ Hcons].
+  discriminate.
+Qed.
+
+Lemma last_symbol_cons_all_same : forall x xs,
+  snd (count_run x xs) = [] ->
+  last_symbol (x :: xs) = Some x.
+Proof.
+  intros x xs Hrest.
+  induction xs as [|y ys IH].
+  - reflexivity.
+  - simpl in Hrest.
+    destruct (sym_eqb y x) eqn:Hyx.
+    + destruct (count_run x ys) as [n rest] eqn:Hcr.
+      simpl in Hrest.
+      rewrite last_symbol_cons_cons.
+      apply sym_eqb_eq in Hyx.
+      subst y.
+      apply IH.
+      simpl.
+      exact Hrest.
+    + discriminate.
+Qed.
+
+Lemma count_run_app_rest_nonempty_aux : forall s w1 w2,
+  snd (count_run s w1) <> [] ->
+  count_run s (w1 ++ w2) =
+    (fst (count_run s w1), snd (count_run s w1) ++ w2).
+Proof.
+  intros s w1 w2.
+  induction w1 as [|x xs IH].
+  - simpl. intro H. contradiction.
+  - intro Hne.
+    simpl. simpl in Hne.
+    destruct (sym_eqb x s) eqn:Hxs.
+    + destruct (count_run s xs) as [n' rest'] eqn:Hcr'.
+      simpl in Hne. simpl.
+      destruct rest' as [|r' rs'].
+      * pose proof (count_run_rest_different s xs) as Hdiff.
+        rewrite Hcr' in Hdiff. simpl in Hdiff.
+        contradiction.
+      * assert (Hne' : snd (n', r' :: rs') <> []).
+        { simpl. discriminate. }
+        specialize (IH Hne').
+        simpl in IH.
+        rewrite IH.
+        reflexivity.
+    + reflexivity.
+Qed.
+
+Lemma count_run_app_rest_nonempty : forall s w1 w2 n r rs,
+  count_run s w1 = (n, r :: rs) ->
+  count_run s (w1 ++ w2) = (n, (r :: rs) ++ w2).
+Proof.
+  intros s w1 w2 n r rs Hcr.
+  pose proof (count_run_app_rest_nonempty_aux s w1 w2) as H.
+  assert (Hne : snd (count_run s w1) <> []).
+  { rewrite Hcr. simpl. discriminate. }
+  specialize (H Hne).
+  rewrite Hcr in H.
+  simpl in H.
+  exact H.
+Qed.
+
+Lemma count_run_app_start_diff : forall s w1 w2 y,
+  first_symbol w2 = Some y ->
+  y <> s ->
+  let (n, rest) := count_run s w1 in
+  count_run s (w1 ++ w2) =
+    match rest with
+    | [] => (n, w2)
+    | _ => (n, rest ++ w2)
+    end.
+Proof.
+  intros s w1 w2 y Hfirst Hneq.
+  induction w1 as [|x xs IH].
+  - simpl.
+    destruct w2 as [|z zs]; [discriminate|].
+    simpl in Hfirst.
+    injection Hfirst as Hz.
+    subst z.
+    simpl.
+    destruct (sym_eqb y s) eqn:Hys.
+    + apply sym_eqb_eq in Hys. contradiction.
+    + reflexivity.
+  - simpl.
+    destruct (sym_eqb x s) eqn:Hxs.
+    + destruct (count_run s xs) as [n rest] eqn:Hcr.
+      simpl in IH.
+      destruct rest as [|r rs].
+      * assert (HIH : count_run s (xs ++ w2) = (n, w2)) by exact IH.
+        rewrite HIH.
+        simpl.
+        reflexivity.
+      * assert (HIH : count_run s (xs ++ w2) = (n, (r :: rs) ++ w2)) by exact IH.
+        rewrite HIH.
+        simpl.
+        reflexivity.
+    + simpl.
+      reflexivity.
+Qed.
+
+Lemma audioactive_aux_sufficient_gen : forall k w n m,
+  length w <= k ->
+  n >= length w -> m >= length w ->
+  audioactive_aux w n = audioactive_aux w m.
+Proof.
+  induction k as [|k' IH].
+  - intros w n m Hk Hn Hm.
+    destruct w; [|simpl in Hk; lia].
+    destruct n, m; reflexivity.
+  - intros w n m Hk Hn Hm.
+    destruct w as [|x xs].
+    + destruct n, m; reflexivity.
+    + destruct n as [|n']; [simpl in Hn; lia|].
+      destruct m as [|m']; [simpl in Hm; lia|].
+      simpl.
+      destruct (count_run x xs) as [cnt rest] eqn:Hcr.
+      f_equal.
+      f_equal.
+      apply (IH rest).
+      * pose proof (count_run_length_sum x xs) as Hlen.
+        rewrite Hcr in Hlen.
+        simpl in Hlen.
+        simpl in Hk.
+        lia.
+      * pose proof (count_run_length_sum x xs) as Hlen.
+        rewrite Hcr in Hlen.
+        simpl in Hlen.
+        simpl in Hn.
+        lia.
+      * pose proof (count_run_length_sum x xs) as Hlen.
+        rewrite Hcr in Hlen.
+        simpl in Hlen.
+        simpl in Hm.
+        lia.
+Qed.
+
+Lemma audioactive_aux_sufficient : forall w n m,
+  n >= length w -> m >= length w ->
+  audioactive_aux w n = audioactive_aux w m.
+Proof.
+  intros w n m Hn Hm.
+  apply (audioactive_aux_sufficient_gen (length w) w n m).
+  - lia.
+  - exact Hn.
+  - exact Hm.
+Qed.
+
+Lemma audioactive_aux_app_boundaries_gen : forall k w1 w2 n,
+  length w1 <= k ->
+  n >= length (w1 ++ w2) ->
+  w1 <> [] -> w2 <> [] ->
+  boundaries_differ w1 w2 ->
+  audioactive_aux (w1 ++ w2) n =
+    audioactive_aux w1 (length w1) ++ audioactive_aux w2 (length w2).
+Proof.
+  induction k as [|k' IH].
+  - intros w1 w2 n Hk Hn Hne1 Hne2 Hbdiff.
+    destruct w1; [contradiction | simpl in Hk; lia].
+  - intros w1 w2 n Hk Hn Hne1 Hne2 Hbdiff.
+    destruct w1 as [|x xs]; [contradiction|].
+    destruct n as [|n'].
+    + rewrite app_length in Hn. simpl in Hn. lia.
+    + simpl.
+      destruct (count_run x xs) as [cnt rest] eqn:Hcr_xs.
+      unfold boundaries_differ in Hbdiff.
+      destruct w2 as [|y ys]; [contradiction|].
+      simpl in Hbdiff.
+      destruct rest as [|r rs] eqn:Hrest.
+      * pose proof (last_symbol_cons_all_same x xs) as Hlast.
+        rewrite Hcr_xs in Hlast. simpl in Hlast.
+        specialize (Hlast eq_refl).
+        rewrite Hlast in Hbdiff.
+        assert (Hbdiff' : y <> x) by (intro; subst; apply Hbdiff; reflexivity).
+        pose proof (count_run_app_start_diff x xs (y :: ys) y eq_refl Hbdiff') as Hcr_app.
+        rewrite Hcr_xs in Hcr_app.
+        simpl in Hcr_app.
+        rewrite Hcr_app.
+        assert (Haux_nil : audioactive_aux [] (length xs) = []).
+        { destruct (length xs); reflexivity. }
+        assert (Heq : audioactive_aux (y :: ys) n' =
+                      audioactive_aux (y :: ys) (length (y :: ys))).
+        { apply audioactive_aux_sufficient.
+          - rewrite app_length in Hn. simpl in Hn.
+            pose proof (count_run_length_sum x xs) as Hlen1.
+            rewrite Hcr_xs in Hlen1. simpl in Hlen1.
+            simpl. lia.
+          - simpl. lia. }
+        rewrite Heq.
+        simpl.
+        rewrite Haux_nil.
+        reflexivity.
+      * pose proof (last_symbol_cons_rest x xs r rs) as Hlast.
+        rewrite Hcr_xs in Hlast. simpl in Hlast.
+        specialize (Hlast eq_refl).
+        rewrite Hlast in Hbdiff.
+        pose proof (count_run_app_rest_nonempty x xs (y :: ys) cnt r rs Hcr_xs) as Hcr_app.
+        rewrite Hcr_app.
+        assert (Hbdiff' : boundaries_differ (r :: rs) (y :: ys)).
+        { unfold boundaries_differ. simpl. exact Hbdiff. }
+        pose proof (count_run_length_sum x xs) as Hlen.
+        rewrite Hcr_xs in Hlen. simpl in Hlen.
+        assert (Hlen_rs : length (r :: rs) <= length xs).
+        { simpl. simpl in Hlen. lia. }
+        assert (Heq_rs : audioactive_aux (r :: rs) (length xs) =
+                         audioactive_aux (r :: rs) (length (r :: rs))).
+        { apply audioactive_aux_sufficient; lia. }
+        rewrite Heq_rs.
+        assert (Heq_app : audioactive_aux ((r :: rs) ++ y :: ys) n' =
+                          audioactive_aux ((r :: rs) ++ y :: ys) (length ((r :: rs) ++ y :: ys))).
+        { apply audioactive_aux_sufficient.
+          - rewrite app_length in Hn. simpl in Hn.
+            rewrite app_length. simpl. lia.
+          - rewrite app_length. lia. }
+        rewrite Heq_app.
+        pose proof (IH (r :: rs) (y :: ys) (length ((r :: rs) ++ y :: ys))) as HIH.
+        assert (HIH_eq : audioactive_aux ((r :: rs) ++ y :: ys) (length ((r :: rs) ++ y :: ys)) =
+                         audioactive_aux (r :: rs) (length (r :: rs)) ++
+                         audioactive_aux (y :: ys) (length (y :: ys))).
+        { apply HIH.
+          - simpl in Hk. lia.
+          - rewrite app_length. lia.
+          - discriminate.
+          - discriminate.
+          - exact Hbdiff'. }
+        rewrite HIH_eq.
+        reflexivity.
+Qed.
+
+Lemma audioactive_aux_app_boundaries_aux : forall w1 w2 n,
+  n >= length (w1 ++ w2) ->
+  w1 <> [] -> w2 <> [] ->
+  boundaries_differ w1 w2 ->
+  audioactive_aux (w1 ++ w2) n =
+    audioactive_aux w1 (length w1) ++ audioactive_aux w2 (length w2).
+Proof.
+  intros w1 w2 n Hn Hne1 Hne2 Hbdiff.
+  apply (audioactive_aux_app_boundaries_gen (length w1) w1 w2 n).
+  - lia.
+  - exact Hn.
+  - exact Hne1.
+  - exact Hne2.
+  - exact Hbdiff.
+Qed.
+
 Lemma audioactive_app_boundaries : forall w1 w2,
   w1 <> [] -> w2 <> [] ->
   boundaries_differ w1 w2 ->
@@ -1751,9 +2096,15 @@ Lemma audioactive_app_boundaries : forall w1 w2,
 Proof.
   intros w1 w2 Hne1 Hne2 Hbdiff.
   unfold audioactive.
-  rewrite app_length.
-  admit.
-Admitted.
+  rewrite (audioactive_aux_sufficient (w1 ++ w2) (length (w1 ++ w2)) (length w1 + length w2)).
+  - apply audioactive_aux_app_boundaries_aux.
+    + rewrite app_length. lia.
+    + exact Hne1.
+    + exact Hne2.
+    + exact Hbdiff.
+  - lia.
+  - rewrite app_length. lia.
+Qed.
 
 Lemma audioactive_single_element : forall e,
   audioactive (element_to_word e) = elements_to_word (element_decays_to e).
