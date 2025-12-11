@@ -1597,3 +1597,218 @@ Proof.
       apply decay_products_closed with e.
       exact Hin.
 Qed.
+
+Definition is_element_concatenation (w : Word) : Prop :=
+  exists es : list Element, w = elements_to_word es.
+
+Lemma element_concat_nil : is_element_concatenation [].
+Proof.
+  exists [].
+  reflexivity.
+Qed.
+
+Lemma element_concat_single : forall e,
+  is_element_concatenation (element_to_word e).
+Proof.
+  intros e.
+  exists [e].
+  unfold elements_to_word.
+  simpl.
+  rewrite app_nil_r.
+  reflexivity.
+Qed.
+
+Lemma elements_to_word_app_aux : forall es1 es2,
+  elements_to_word (es1 ++ es2) = elements_to_word es1 ++ elements_to_word es2.
+Proof.
+  intros es1 es2.
+  unfold elements_to_word.
+  induction es1 as [|e rest IH].
+  - simpl.
+    reflexivity.
+  - simpl.
+    rewrite IH.
+    rewrite app_assoc.
+    reflexivity.
+Qed.
+
+Lemma element_concat_app : forall w1 w2,
+  is_element_concatenation w1 ->
+  is_element_concatenation w2 ->
+  is_element_concatenation (w1 ++ w2).
+Proof.
+  intros w1 w2 [es1 H1] [es2 H2].
+  exists (es1 ++ es2).
+  subst.
+  symmetry.
+  apply elements_to_word_app_aux.
+Qed.
+
+Lemma audioactive_element_produces_elements : forall e,
+  is_element_concatenation (audioactive (element_to_word e)).
+Proof.
+  intros e.
+  rewrite decay_correctness.
+  exists (element_decays_to e).
+  reflexivity.
+Qed.
+
+Lemma elements_to_word_app : forall es1 es2,
+  elements_to_word (es1 ++ es2) = elements_to_word es1 ++ elements_to_word es2.
+Proof.
+  intros es1 es2.
+  unfold elements_to_word.
+  rewrite fold_right_app.
+  induction es1 as [|e rest IH].
+  - simpl.
+    reflexivity.
+  - simpl.
+    rewrite <- app_assoc.
+    rewrite IH.
+    reflexivity.
+Qed.
+
+Lemma audioactive_elements_concat : forall es,
+  audioactive (elements_to_word es) =
+  elements_to_word (flat_map element_decays_to es).
+Proof.
+  intros es.
+  induction es as [|e rest IH].
+  - simpl.
+    reflexivity.
+  - simpl.
+    unfold elements_to_word at 1.
+    simpl.
+    destruct rest as [|e2 rest'].
+    + simpl.
+      rewrite app_nil_r.
+      rewrite app_nil_r.
+      apply decay_correctness.
+    + admit.
+Admitted.
+
+Theorem element_concatenation_closed : forall w,
+  is_element_concatenation w ->
+  is_element_concatenation (audioactive w).
+Proof.
+  intros w [es Hes].
+  subst.
+  exists (flat_map element_decays_to es).
+  apply audioactive_elements_concat.
+Qed.
+
+Definition max_element_length : nat :=
+  fold_right max 0 (map (fun e => length (element_to_word e)) all_elements).
+
+Lemma max_element_length_bound : max_element_length = 42.
+Proof. vm_compute. reflexivity. Qed.
+
+Definition element_words_distinct : Prop :=
+  forall e1 e2 : Element,
+    element_to_word e1 = element_to_word e2 -> e1 = e2.
+
+Theorem element_words_injective : element_words_distinct.
+Proof.
+  unfold element_words_distinct.
+  intros e1 e2 Heq.
+  destruct e1, e2; vm_compute in Heq; try reflexivity; discriminate.
+Qed.
+
+Definition splitting_depth_bound : nat := 10.
+
+Theorem atomicity_depth_sufficient : forall e : Element,
+  is_atom_b (element_to_word e) splitting_depth_bound = true.
+Proof.
+  intros e.
+  destruct e; vm_compute; reflexivity.
+Qed.
+
+Theorem element_words_are_minimal_atoms :
+  forall e : Element,
+    is_atom_b (element_to_word e) splitting_depth_bound = true /\
+    (forall w1 w2 : Word,
+      element_to_word e = w1 ++ w2 ->
+      w1 <> [] -> w2 <> [] ->
+      ~ non_interacting_upto w1 w2 splitting_depth_bound = true).
+Proof.
+  intros e.
+  split.
+  - apply atomicity_depth_sufficient.
+  - intros w1 w2 Hsplit Hne1 Hne2 Hni.
+    assert (Hatom : is_atom_b (element_to_word e) splitting_depth_bound = true)
+      by (apply atomicity_depth_sufficient).
+    unfold is_atom_b in Hatom.
+    destruct (element_to_word e) as [|x [|y ys]] eqn:Heword.
+    + destruct e; discriminate.
+    + destruct w1 as [|a1 w1'].
+      * contradiction.
+      * destruct w2 as [|b1 w2']; [contradiction | ].
+        simpl in Hsplit.
+        injection Hsplit as Ha1 Hrest.
+        destruct w1'; discriminate.
+    + unfold find_split_point in Hatom.
+      destruct (find_split_point_aux (x :: y :: ys) (length (x :: y :: ys) - 1) splitting_depth_bound) eqn:Hfind.
+      * discriminate.
+      * admit.
+Admitted.
+
+Theorem atoms_are_elements :
+  forall w : Word,
+    w <> [] ->
+    is_atom_b w splitting_depth_bound = true ->
+    word_is_element w = true ->
+    exists e : Element, w = element_to_word e.
+Proof.
+  intros w Hne Hatom Helem.
+  unfold word_is_element in Helem.
+  unfold all_element_words in Helem.
+  induction all_elements as [|e rest IH].
+  - simpl in Helem.
+    discriminate.
+  - simpl in Helem.
+    destruct (word_eq_dec w (element_to_word e)) as [Heq | Hneq].
+    + exists e.
+      exact Heq.
+    + apply IH.
+      exact Helem.
+Qed.
+
+Theorem verified_element_atoms :
+  forall e : Element,
+    is_atom_b (element_to_word e) splitting_depth_bound = true /\
+    word_is_element (element_to_word e) = true /\
+    audioactive (element_to_word e) = elements_to_word (element_decays_to e).
+Proof.
+  intros e.
+  repeat split.
+  - apply atomicity_depth_sufficient.
+  - apply element_word_is_element.
+  - apply decay_correctness.
+Qed.
+
+Theorem cosmological_theorem_full :
+  (forall w : Word, w <> [] ->
+    exists N : nat, N <= 24 /\
+      forall n : nat, n >= N ->
+        is_element_concatenation (iterate_audio n w)) /\
+  (forall e : Element,
+    is_atom_b (element_to_word e) splitting_depth_bound = true) /\
+  (length all_elements = 92) /\
+  (forall e e' : Element,
+    List.In e' (element_decays_to e) -> List.In e' all_elements).
+Proof.
+  split.
+  - intros w Hne.
+    exists 24.
+    split.
+    + lia.
+    + intros n Hn.
+      admit.
+  - split.
+    + apply atomicity_depth_sufficient.
+    + split.
+      * reflexivity.
+      * intros e e' Hin.
+        apply decay_products_closed with e.
+        exact Hin.
+Admitted.
