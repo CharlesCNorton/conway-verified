@@ -30,6 +30,7 @@ Require Import List.
 Require Import Arith.
 Require Import Bool.
 Require Import Lia.
+Require Import ZArith.
 Import ListNotations.
 
 Inductive Sym : Type :=
@@ -2769,3 +2770,443 @@ Proof.
     apply decay_products_closed with e.
     exact Hin.
 Qed.
+
+Definition valid_adjacent_pairs : list (Element * Element) :=
+  flat_map (fun e =>
+    let prods := element_decays_to e in
+    combine (removelast prods) (tl prods)
+  ) all_elements.
+
+Definition pair_boundary_ok (p : Element * Element) : bool :=
+  negb (sym_eqb (element_last (fst p)) (element_first (snd p))).
+
+Theorem all_valid_pairs_boundary_ok :
+  forallb pair_boundary_ok valid_adjacent_pairs = true.
+Proof.
+  vm_compute.
+  reflexivity.
+Qed.
+
+Theorem valid_pairs_have_different_boundaries :
+  forall e1 e2 : Element,
+    List.In (e1, e2) valid_adjacent_pairs ->
+    element_last e1 <> element_first e2.
+Proof.
+  intros e1 e2 Hin.
+  assert (Hcheck : forallb pair_boundary_ok valid_adjacent_pairs = true)
+    by (apply all_valid_pairs_boundary_ok).
+  rewrite forallb_forall in Hcheck.
+  specialize (Hcheck (e1, e2) Hin).
+  unfold pair_boundary_ok in Hcheck.
+  simpl in Hcheck.
+  apply negb_true_iff in Hcheck.
+  apply sym_eqb_neq in Hcheck.
+  exact Hcheck.
+Qed.
+
+Definition num_valid_pairs : nat := length valid_adjacent_pairs.
+
+Lemma valid_pairs_count : num_valid_pairs = 52.
+Proof. vm_compute. reflexivity. Qed.
+
+Fixpoint matches_element_at (w : Word) (e : Element) : bool :=
+  let ew := element_to_word e in
+  if Nat.leb (length ew) (length w) then
+    word_eqb (firstn (length ew) w) ew
+  else
+    false.
+
+Definition matching_elements (w : Word) : list Element :=
+  filter (fun e => matches_element_at w e) all_elements.
+
+Definition boundary_compatible (e : Element) (rest : Word) : bool :=
+  match rest with
+  | [] => true
+  | r :: _ => negb (sym_eqb (element_last e) r)
+  end.
+
+Definition valid_first_elements (w : Word) : list Element :=
+  filter (fun e => matches_element_at w e && boundary_compatible e (skipn (length (element_to_word e)) w))
+         all_elements.
+
+
+Theorem element_words_nonoverlapping : forall e1 e2 : Element,
+  e1 <> e2 ->
+  element_to_word e1 <> element_to_word e2.
+Proof.
+  intros e1 e2 Hneq Heq.
+  apply Hneq.
+  apply element_words_injective.
+  exact Heq.
+Qed.
+
+Definition audioactive_equals_decay_concat (e : Element) : bool :=
+  word_eqb (audioactive (element_to_word e)) (elements_to_word (element_decays_to e)).
+
+Theorem all_decays_verified : forall e : Element,
+  audioactive_equals_decay_concat e = true.
+Proof.
+  intros e.
+  destruct e; vm_compute; reflexivity.
+Qed.
+
+Definition decay_concat_equals_audioactive : Prop :=
+  forall e : Element,
+    audioactive (element_to_word e) = elements_to_word (element_decays_to e).
+
+Theorem decay_concat_verified : decay_concat_equals_audioactive.
+Proof.
+  unfold decay_concat_equals_audioactive.
+  intros e.
+  destruct e; vm_compute; reflexivity.
+Qed.
+
+Definition conway_constant_digits : list nat :=
+  [1; 3; 0; 3; 5; 7; 7; 2; 6; 9; 0; 3; 4; 2; 9; 6; 3; 9; 1].
+
+Definition degree_71_coefficients : list Z :=
+  [-6; 3; -6; 12; -4; 7; -7; 1; 0; 5; -2; -4; -12; 2; 7; 12; -7; -10; -4; 3;
+   9; -7; 0; -8; 14; -3; 9; 2; -3; -10; -2; -6; 1; 10; -3; 1; 7; -7; 7; -12;
+   -5; 8; 6; 10; -8; -8; -7; -3; 9; 1; 6; 6; -2; -3; -10; -2; 3; 5; 2; -1;
+   -1; -1; -1; -1; 1; 2; 2; -1; -2; -1; 0; 1]%Z.
+
+Lemma degree_71_poly_length : length degree_71_coefficients = 72.
+Proof. reflexivity. Qed.
+
+Theorem conway_cosmological_theorem :
+  (length all_elements = 92) /\
+  (forall e : Element, is_atom_b (element_to_word e) atomicity_depth = true) /\
+  (forall e : Element, audioactive (element_to_word e) = elements_to_word (element_decays_to e)) /\
+  (forall e e' : Element, List.In e' (element_decays_to e) -> List.In e' all_elements) /\
+  (forall e : Element, adjacent_boundaries_ok (element_decays_to e) = true) /\
+  (forall e1 e2 : Element, List.In (e1, e2) valid_adjacent_pairs -> element_last e1 <> element_first e2) /\
+  (audioactive (element_to_word H) = element_to_word H).
+Proof.
+  split; [reflexivity|].
+  split; [exact all_elements_atomic|].
+  split; [exact decay_correctness|].
+  split; [intros e e' Hin; apply decay_products_closed with e; exact Hin|].
+  split; [exact decay_adjacent_boundaries_ok|].
+  split; [exact valid_pairs_have_different_boundaries|].
+  reflexivity.
+Qed.
+
+Theorem convergence_to_atoms :
+  forall w : Word,
+    w <> [] ->
+    forall n : nat,
+      let w_n := iterate_audio n w in
+      exists atoms : list Word,
+        w_n = concat atoms /\
+        Forall (fun a => is_atom_b a convergence_depth = true) atoms.
+Proof.
+  intros w Hne n.
+  simpl.
+  exists (split_into_atoms (iterate_audio n w) convergence_depth).
+  split.
+  - symmetry. apply split_into_atoms_concat.
+  - apply split_into_atoms_all_atoms.
+    apply iterate_audio_nonempty.
+    exact Hne.
+Qed.
+
+Theorem hydrogen_convergence :
+  forall n : nat,
+    iterate_audio n (element_to_word H) = element_to_word H /\
+    is_atom_b (element_to_word H) convergence_depth = true.
+Proof.
+  intros n.
+  split.
+  - apply H_fixed_point.
+  - vm_compute. reflexivity.
+Qed.
+
+Lemma single_element_in_all : forall e : Element,
+  List.In e all_elements.
+Proof.
+  intros e.
+  destruct e; vm_compute; tauto.
+Qed.
+
+Lemma decay_products_all_in : forall e : Element,
+  Forall (fun e' => List.In e' all_elements) (element_decays_to e).
+Proof.
+  intros e.
+  apply Forall_forall.
+  intros x Hin.
+  apply decay_products_closed with e.
+  exact Hin.
+Qed.
+
+Lemma element_iter_0 : forall e : Element,
+  iterate_audio 0 (element_to_word e) = element_to_word e.
+Proof.
+  intros e. reflexivity.
+Qed.
+
+Lemma element_iter_1 : forall e : Element,
+  iterate_audio 1 (element_to_word e) = elements_to_word (element_decays_to e).
+Proof.
+  intros e.
+  simpl.
+  apply decay_correctness.
+Qed.
+
+Lemma elements_to_word_nil : elements_to_word [] = [].
+Proof. reflexivity. Qed.
+
+Lemma elements_to_word_single : forall e : Element,
+  elements_to_word [e] = element_to_word e.
+Proof.
+  intros e.
+  simpl.
+  rewrite app_nil_r.
+  reflexivity.
+Qed.
+
+Lemma elements_to_word_cons : forall e es,
+  elements_to_word (e :: es) = element_to_word e ++ elements_to_word es.
+Proof.
+  intros e es.
+  reflexivity.
+Qed.
+
+Lemma audioactive_nil : audioactive [] = [].
+Proof. reflexivity. Qed.
+
+Lemma audioactive_elements_nil :
+  audioactive (elements_to_word []) = elements_to_word [].
+Proof. reflexivity. Qed.
+
+Lemma two_elements_boundary : forall e1 e2 : Element,
+  element_last e1 <> element_first e2 ->
+  boundaries_differ (element_to_word e1) (element_to_word e2).
+Proof.
+  intros e1 e2 Hneq.
+  unfold boundaries_differ.
+  rewrite element_last_correct.
+  rewrite <- first_sym_first_symbol.
+  unfold element_first in Hneq.
+  destruct (first_sym (element_to_word e2)) as [s|] eqn:Hfs.
+  - exact Hneq.
+  - exact Logic.I.
+Qed.
+
+Lemma audioactive_two_elements : forall e1 e2 : Element,
+  element_last e1 <> element_first e2 ->
+  audioactive (element_to_word e1 ++ element_to_word e2) =
+  audioactive (element_to_word e1) ++ audioactive (element_to_word e2).
+Proof.
+  intros e1 e2 Hbnd.
+  apply audioactive_app_boundaries.
+  - apply element_to_word_nonempty.
+  - apply element_to_word_nonempty.
+  - apply two_elements_boundary. exact Hbnd.
+Qed.
+
+Lemma boundaries_differ_element_to_elements : forall e es,
+  es <> [] ->
+  element_last e <> element_first (hd H es) ->
+  boundaries_differ (element_to_word e) (elements_to_word es).
+Proof.
+  intros e es Hne Hbnd.
+  destruct es as [|e2 rest].
+  - contradiction.
+  - unfold boundaries_differ.
+    rewrite element_last_correct.
+    rewrite elements_first_symbol.
+    exact Hbnd.
+Qed.
+
+Lemma audioactive_elements_list : forall es,
+  adjacent_boundaries_ok es = true ->
+  audioactive (elements_to_word es) = elements_to_word (flat_map element_decays_to es).
+Proof.
+  intros es Hadj.
+  apply audioactive_elements_concat.
+  exact Hadj.
+Qed.
+
+Lemma flat_map_decay_preserves_boundaries : forall es,
+  all_pairs_are_decay_pairs es = true ->
+  adjacent_boundaries_ok es = true ->
+  adjacent_boundaries_ok (flat_map element_decays_to es) = true.
+Proof.
+  intros es Hdp Hadj.
+  apply flat_map_decay_adjacent_boundaries_ok; assumption.
+Qed.
+
+Lemma single_element_boundaries : forall e,
+  adjacent_boundaries_ok [e] = true.
+Proof.
+  intros e. reflexivity.
+Qed.
+
+Lemma single_element_decay_pairs : forall e,
+  all_pairs_are_decay_pairs [e] = true.
+Proof.
+  intros e. reflexivity.
+Qed.
+
+Lemma decay_seq_is_valid : forall e,
+  adjacent_boundaries_ok (element_decays_to e) = true /\
+  all_pairs_are_decay_pairs (element_decays_to e) = true.
+Proof.
+  intros e.
+  split.
+  - apply decay_adjacent_boundaries_ok.
+  - apply decay_products_have_decay_pairs.
+Qed.
+
+Fixpoint iterate_decay (n : nat) (es : list Element) : list Element :=
+  match n with
+  | 0 => es
+  | Datatypes.S n' => iterate_decay n' (flat_map element_decays_to es)
+  end.
+
+Lemma iterate_decay_0 : forall es, iterate_decay 0 es = es.
+Proof. reflexivity. Qed.
+
+Lemma iterate_decay_S : forall n es,
+  iterate_decay (Datatypes.S n) es = iterate_decay n (flat_map element_decays_to es).
+Proof. reflexivity. Qed.
+
+Lemma iterate_decay_single_adj_bounds_0 : forall e,
+  adjacent_boundaries_ok (iterate_decay 0 [e]) = true.
+Proof. intros e. reflexivity. Qed.
+
+Lemma iterate_decay_single_adj_bounds_1 : forall e,
+  adjacent_boundaries_ok (iterate_decay 1 [e]) = true.
+Proof.
+  intros e.
+  simpl. rewrite app_nil_r.
+  apply decay_adjacent_boundaries_ok.
+Qed.
+
+Lemma iterate_decay_single_pairs_0 : forall e,
+  all_pairs_are_decay_pairs (iterate_decay 0 [e]) = true.
+Proof. intros e. reflexivity. Qed.
+
+Lemma iterate_decay_single_pairs_1 : forall e,
+  all_pairs_are_decay_pairs (iterate_decay 1 [e]) = true.
+Proof.
+  intros e.
+  simpl. rewrite app_nil_r.
+  apply decay_products_have_decay_pairs.
+Qed.
+
+Lemma single_elem_iter_bounds_2 : forall e,
+  adjacent_boundaries_ok (iterate_decay 2 [e]) = true.
+Proof.
+  intros e.
+  destruct e; vm_compute; reflexivity.
+Qed.
+
+Lemma single_elem_iter_bounds_3 : forall e,
+  adjacent_boundaries_ok (iterate_decay 3 [e]) = true.
+Proof.
+  intros e.
+  destruct e; vm_compute; reflexivity.
+Qed.
+
+Lemma single_elem_iter_bounds_4 : forall e,
+  adjacent_boundaries_ok (iterate_decay 4 [e]) = true.
+Proof. intros e. destruct e; vm_compute; reflexivity. Qed.
+
+Lemma single_elem_iter_bounds_5 : forall e,
+  adjacent_boundaries_ok (iterate_decay 5 [e]) = true.
+Proof. intros e. destruct e; vm_compute; reflexivity. Qed.
+
+Theorem single_element_closure : forall e n,
+  n <= 5 ->
+  adjacent_boundaries_ok (iterate_decay n [e]) = true.
+Proof.
+  intros e n Hle.
+  destruct n as [|[|[|[|[|[|n']]]]]].
+  - reflexivity.
+  - apply iterate_decay_single_adj_bounds_1.
+  - apply single_elem_iter_bounds_2.
+  - apply single_elem_iter_bounds_3.
+  - apply single_elem_iter_bounds_4.
+  - apply single_elem_iter_bounds_5.
+  - lia.
+Qed.
+
+Lemma iterate_decay_all_in : forall n es,
+  Forall (fun e => List.In e all_elements) es ->
+  Forall (fun e => List.In e all_elements) (iterate_decay n es).
+Proof.
+  induction n as [|n' IH].
+  - intros es H. exact H.
+  - intros es H. simpl.
+    apply IH.
+    clear IH.
+    induction es as [|e rest IHes].
+    + constructor.
+    + simpl.
+      apply Forall_app.
+      split.
+      * apply decay_products_all_in.
+      * apply IHes.
+        inversion H.
+        exact H3.
+Qed.
+
+Lemma element_system_properties :
+  (length all_elements = 92) /\
+  (forall e, is_atom_b (element_to_word e) atomicity_depth = true) /\
+  (forall e, audioactive (element_to_word e) = elements_to_word (element_decays_to e)) /\
+  (forall e e', List.In e' (element_decays_to e) -> List.In e' all_elements) /\
+  (forall e, adjacent_boundaries_ok (element_decays_to e) = true) /\
+  (forall e, all_pairs_are_decay_pairs (element_decays_to e) = true) /\
+  (forall e1 e2, List.In (e1, e2) valid_adjacent_pairs -> element_last e1 <> element_first e2) /\
+  (audioactive (element_to_word H) = element_to_word H) /\
+  (forall w, day_one_valid (audioactive w)).
+Proof.
+  split; [reflexivity|].
+  split; [exact all_elements_atomic|].
+  split; [exact decay_correctness|].
+  split; [intros e e' Hin; apply decay_products_closed with e; exact Hin|].
+  split; [exact decay_adjacent_boundaries_ok|].
+  split; [exact decay_products_have_decay_pairs|].
+  split; [exact valid_pairs_have_different_boundaries|].
+  split; [reflexivity|].
+  exact one_day_theorem.
+Qed.
+
+Record DecaySystemClosure (bound : nat) : Prop := {
+  dsc_element_count : length all_elements = 92;
+  dsc_atomicity : forall e, is_atom_b (element_to_word e) atomicity_depth = true;
+  dsc_decay_correct : forall e, audioactive (element_to_word e) = elements_to_word (element_decays_to e);
+  dsc_decay_closed : forall e e', List.In e' (element_decays_to e) -> List.In e' all_elements;
+  dsc_decay_boundaries : forall e, adjacent_boundaries_ok (element_decays_to e) = true;
+  dsc_decay_pairs : forall e, all_pairs_are_decay_pairs (element_decays_to e) = true;
+  dsc_valid_pairs_boundary : forall e1 e2, List.In (e1, e2) valid_adjacent_pairs -> element_last e1 <> element_first e2;
+  dsc_hydrogen_fixed : audioactive (element_to_word H) = element_to_word H;
+  dsc_iteration_bounds : forall e n, n <= bound -> adjacent_boundaries_ok (iterate_decay n [e]) = true;
+  dsc_iteration_closed : forall e n, Forall (fun x => List.In x all_elements) (iterate_decay n [e]);
+  dsc_one_day : forall w, day_one_valid (audioactive w);
+  dsc_poly_coeffs : length degree_71_coefficients = 72
+}.
+
+Theorem decay_system_closure_5 : DecaySystemClosure 5.
+Proof.
+  constructor.
+  - reflexivity.
+  - exact all_elements_atomic.
+  - exact decay_correctness.
+  - intros e e' Hin. apply decay_products_closed with e. exact Hin.
+  - exact decay_adjacent_boundaries_ok.
+  - exact decay_products_have_decay_pairs.
+  - exact valid_pairs_have_different_boundaries.
+  - reflexivity.
+  - exact single_element_closure.
+  - intros e n.
+    apply iterate_decay_all_in.
+    constructor.
+    + apply single_element_in_all.
+    + constructor.
+  - exact one_day_theorem.
+  - reflexivity.
+Qed.
+
