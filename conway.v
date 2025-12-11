@@ -814,19 +814,6 @@ Fixpoint word_in_list (w : Word) (ws : list Word) : bool :=
       if word_eq_dec w w' then true else word_in_list w ws'
   end.
 
-Definition elem_H : Word := [S2; S2].
-Definition elem_He : Word := [S1; S3; S1; S1; S2; S2].
-Definition elem_Li : Word := [S1; S1; S1; S3; S2; S1; S1; S2].
-Definition elem_Be : Word := [S1; S1; S1; S2; S1; S3; S2; S1; S1; S2].
-Definition elem_B : Word := [S1; S2; S1; S1; S1; S3; S2; S1; S1; S2].
-Definition elem_C : Word := [S3; S1; S1; S2; S1; S1; S1; S3; S2; S1; S1; S2].
-Definition elem_N : Word := [S1; S1; S1; S3; S1; S2; S1; S1; S1; S3; S2; S1; S1; S2].
-Definition elem_O : Word := [S1; S3; S1; S1; S1; S3; S1; S2; S1; S1; S1; S3; S2; S1; S1; S2].
-Definition elem_F : Word := [S3; S1; S1; S2; S1; S3; S1; S1; S1; S3; S1; S2; S1; S1; S1; S3; S2; S1; S1; S2].
-Definition elem_Ne : Word := [S1; S1; S1; S2; S1; S1; S1; S3; S1; S1; S1; S3; S1; S2; S1; S1; S1; S3; S2; S1; S1; S2].
-
-Example H_stable : audioactive elem_H = elem_H.
-Proof. reflexivity. Qed.
 
 Fixpoint last_sym (w : Word) : option Sym :=
   match w with
@@ -901,7 +888,7 @@ Definition is_atom_b (w : Word) (depth : nat) : bool :=
          end
   end.
 
-Example H_is_atom : is_atom_b elem_H 5 = true.
+Example H_is_atom : is_atom_b (element_to_word H) 5 = true.
 Proof. vm_compute. reflexivity. Qed.
 
 Fixpoint split_into_atoms_aux (w : Word) (depth : nat) (fuel : nat) : list Word :=
@@ -924,7 +911,7 @@ Definition all_atoms_in_set (atoms : list Word) (element_set : list Word) : bool
   forallb (fun a => word_in_list a element_set) atoms.
 
 Definition common_elements : list Word :=
-  [elem_H].
+  [element_to_word H].
 
 Definition decays_to_elements (w : Word) (n : nat) (depth : nat) : bool :=
   let w' := iterate_audio n w in
@@ -942,20 +929,26 @@ Definition cosmological_theorem_statement : Prop :=
           (forall a, List.In a atoms -> is_atom_b a 100 = true) /\
           w' = flat_map (fun x => x) atoms.
 
-Lemma H_audioactive : audioactive elem_H = elem_H.
+Lemma H_audioactive : audioactive (element_to_word H) = element_to_word H.
 Proof. reflexivity. Qed.
 
-Lemma H_fixed_point : forall n, iterate_audio n elem_H = elem_H.
+Lemma H_fixed_point_aux : forall n, iterate_audio n [S2; S2] = [S2; S2].
 Proof.
   induction n as [|n' IH].
   - reflexivity.
-  - simpl.
-    rewrite H_audioactive.
+  - unfold iterate_audio.
+    fold iterate_audio.
     exact IH.
 Qed.
 
+Lemma H_fixed_point : forall n, iterate_audio n (element_to_word H) = element_to_word H.
+Proof.
+  intros n.
+  apply H_fixed_point_aux.
+Qed.
+
 Lemma H_always_atom : forall n depth,
-  is_atom_b (iterate_audio n elem_H) depth = is_atom_b elem_H depth.
+  is_atom_b (iterate_audio n (element_to_word H)) depth = is_atom_b (element_to_word H) depth.
 Proof.
   intros n depth.
   rewrite H_fixed_point.
@@ -965,8 +958,8 @@ Qed.
 Theorem cosmological_for_H :
   exists N : nat, N <= 24 /\
     forall n : nat, n >= N ->
-      iterate_audio n elem_H = elem_H /\
-      is_atom_b elem_H 5 = true.
+      iterate_audio n (element_to_word H) = element_to_word H /\
+      is_atom_b (element_to_word H) 5 = true.
 Proof.
   exists 0.
   split.
@@ -1307,13 +1300,13 @@ Proof.
   intros w Hne.
   destruct w as [|s ws].
   - contradiction.
-  - destruct (word_eq_dec (s :: ws) elem_H) as [HeqH | HneqH].
+  - destruct (word_eq_dec (s :: ws) (element_to_word H)) as [HeqH | HneqH].
     + rewrite HeqH.
       exists 0.
       split.
       * lia.
       * intros n _.
-        exists [elem_H].
+        exists [element_to_word H].
         split.
         -- rewrite H_fixed_point.
            symmetry.
@@ -1386,6 +1379,103 @@ Definition all_elements : list Element :=
 Lemma all_elements_count : length all_elements = 92.
 Proof. reflexivity. Qed.
 
+Definition element_eqb (e1 e2 : Element) : bool :=
+  match e1, e2 with
+  | H, H => true | He, He => true | Li, Li => true | Be, Be => true
+  | B, B => true | C, C => true | N, N => true | O, O => true
+  | F, F => true | Ne, Ne => true | Na, Na => true | Mg, Mg => true
+  | Al, Al => true | Si, Si => true | P, P => true | S, S => true
+  | Cl, Cl => true | Ar, Ar => true | K, K => true | Ca, Ca => true
+  | Sc, Sc => true | Ti, Ti => true | V, V => true | Cr, Cr => true
+  | Mn, Mn => true | Fe, Fe => true | Co, Co => true | Ni, Ni => true
+  | Cu, Cu => true | Zn, Zn => true | Ga, Ga => true | Ge, Ge => true
+  | As, As => true | Se, Se => true | Br, Br => true | Kr, Kr => true
+  | Rb, Rb => true | Sr, Sr => true | Y, Y => true | Zr, Zr => true
+  | Nb, Nb => true | Mo, Mo => true | Tc, Tc => true | Ru, Ru => true
+  | Rh, Rh => true | Pd, Pd => true | Ag, Ag => true | Cd, Cd => true
+  | In, In => true | Sn, Sn => true | Sb, Sb => true | Te, Te => true
+  | I, I => true | Xe, Xe => true | Cs, Cs => true | Ba, Ba => true
+  | La, La => true | Ce, Ce => true | Pr, Pr => true | Nd, Nd => true
+  | Pm, Pm => true | Sm, Sm => true | Eu, Eu => true | Gd, Gd => true
+  | Tb, Tb => true | Dy, Dy => true | Ho, Ho => true | Er, Er => true
+  | Tm, Tm => true | Yb, Yb => true | Lu, Lu => true | Hf, Hf => true
+  | Ta, Ta => true | W, W => true | Re, Re => true | Os, Os => true
+  | Ir, Ir => true | Pt, Pt => true | Au, Au => true | Hg, Hg => true
+  | Tl, Tl => true | Pb, Pb => true | Bi, Bi => true | Po, Po => true
+  | At, At => true | Rn, Rn => true | Fr, Fr => true | Ra, Ra => true
+  | Ac, Ac => true | Th, Th => true | Pa, Pa => true | U, U => true
+  | _, _ => false
+  end.
+
+Lemma element_eqb_refl : forall e, element_eqb e e = true.
+Proof.
+  destruct e; reflexivity.
+Qed.
+
+Lemma element_eqb_eq : forall e1 e2, element_eqb e1 e2 = true <-> e1 = e2.
+Proof.
+  intros e1 e2.
+  split.
+  - destruct e1, e2; simpl; intros H0; try reflexivity; discriminate.
+  - intros ->.
+    apply element_eqb_refl.
+Qed.
+
+Fixpoint element_in_list (e : Element) (l : list Element) : bool :=
+  match l with
+  | [] => false
+  | x :: xs => if element_eqb e x then true else element_in_list e xs
+  end.
+
+Lemma element_in_list_correct : forall e l,
+  element_in_list e l = true <-> List.In e l.
+Proof.
+  intros e l.
+  induction l as [|x xs IH].
+  - simpl.
+    split; intros H0; discriminate + contradiction.
+  - simpl.
+    destruct (element_eqb e x) eqn:Heq.
+    + apply element_eqb_eq in Heq.
+      subst.
+      split; intros _; [left; reflexivity | reflexivity].
+    + rewrite IH.
+      split.
+      * intros Hin.
+        right.
+        exact Hin.
+      * intros [Heq' | Hin].
+        -- subst.
+           rewrite element_eqb_refl in Heq.
+           discriminate.
+        -- exact Hin.
+Qed.
+
+Definition all_decay_products_in_elements : bool :=
+  forallb (fun e =>
+    forallb (fun e' => element_in_list e' all_elements)
+            (element_decays_to e))
+          all_elements.
+
+Lemma all_decay_products_in_elements_true : all_decay_products_in_elements = true.
+Proof. vm_compute. reflexivity. Qed.
+
+Theorem decay_products_closed : forall e e' : Element,
+  List.In e' (element_decays_to e) -> List.In e' all_elements.
+Proof.
+  intros e e' Hin.
+  assert (Hcheck : all_decay_products_in_elements = true)
+    by (apply all_decay_products_in_elements_true).
+  unfold all_decay_products_in_elements in Hcheck.
+  rewrite forallb_forall in Hcheck.
+  assert (Hine : List.In e all_elements) by (destruct e; vm_compute; tauto).
+  specialize (Hcheck e Hine).
+  rewrite forallb_forall in Hcheck.
+  specialize (Hcheck e' Hin).
+  apply element_in_list_correct.
+  exact Hcheck.
+Qed.
+
 Theorem hydrogen_unique_fixed_point : forall e : Element,
   audioactive (element_to_word e) = element_to_word e <-> e = H.
 Proof.
@@ -1421,4 +1511,89 @@ Proof.
   - apply decay_correctness.
   - apply hydrogen_unique_fixed_point.
   - apply hydrogen_unique_fixed_point.
+Qed.
+
+Definition all_element_words : list Word :=
+  map element_to_word all_elements.
+
+Lemma all_element_words_count : length all_element_words = 92.
+Proof. reflexivity. Qed.
+
+Definition word_is_element (w : Word) : bool :=
+  word_in_list w all_element_words.
+
+Lemma element_word_is_element : forall e : Element,
+  word_is_element (element_to_word e) = true.
+Proof.
+  intros e.
+  unfold word_is_element, all_element_words.
+  destruct e; vm_compute; reflexivity.
+Qed.
+
+Fixpoint word_to_element (w : Word) : option Element :=
+  let check := fix check (es : list Element) : option Element :=
+    match es with
+    | [] => None
+    | e :: rest =>
+        if word_eq_dec w (element_to_word e) then Some e
+        else check rest
+    end
+  in check all_elements.
+
+Lemma word_to_element_correct : forall e : Element,
+  word_to_element (element_to_word e) = Some e.
+Proof.
+  intros e.
+  destruct e; vm_compute; reflexivity.
+Qed.
+
+
+Definition element_words_are_atoms : Prop :=
+  forall e : Element, is_atom_b (element_to_word e) atomicity_depth = true.
+
+Theorem element_words_are_atoms_verified : element_words_are_atoms.
+Proof.
+  unfold element_words_are_atoms.
+  exact all_elements_atomic.
+Qed.
+
+Theorem decay_preserves_element_words : forall e : Element,
+  forall e' : Element,
+    List.In e' (element_decays_to e) ->
+    word_is_element (element_to_word e') = true.
+Proof.
+  intros e e' Hin.
+  apply element_word_is_element.
+Qed.
+
+Theorem element_system_complete :
+  forall e : Element,
+    List.In e all_elements /\
+    is_atom_b (element_to_word e) atomicity_depth = true /\
+    audioactive (element_to_word e) = elements_to_word (element_decays_to e) /\
+    (forall e' : Element, List.In e' (element_decays_to e) -> List.In e' all_elements).
+Proof.
+  intros e.
+  repeat split.
+  - destruct e; vm_compute; tauto.
+  - apply all_elements_atomic.
+  - apply decay_correctness.
+  - intros e' Hin.
+    apply decay_products_closed with e.
+    exact Hin.
+Qed.
+
+Theorem ninety_two_elements :
+  length all_elements = 92 /\
+  (forall e : Element, List.In e all_elements) /\
+  (forall e e' : Element, List.In e' (element_decays_to e) -> List.In e' all_elements).
+Proof.
+  split.
+  - reflexivity.
+  - split.
+    + intros e.
+      destruct e; vm_compute; tauto.
+    + intros e e' Hin.
+      apply decay_products_closed with e.
+      exact Hin.
 Qed.
