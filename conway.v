@@ -2120,8 +2120,18 @@ Lemma audioactive_element_app : forall e w,
   audioactive (element_to_word e) ++ audioactive w.
 Proof.
   intros e w Hne Hbdiff.
-  admit.
-Admitted.
+  apply audioactive_app_boundaries.
+  - destruct e; discriminate.
+  - exact Hne.
+  - unfold boundaries_differ.
+    rewrite element_last_correct.
+    destruct w as [|y ys]; [contradiction|].
+    simpl.
+    unfold element_last in Hbdiff.
+    rewrite element_last_correct in Hbdiff.
+    simpl in Hbdiff.
+    exact Hbdiff.
+Qed.
 
 Lemma elements_first_symbol : forall e rest,
   first_symbol (elements_to_word (e :: rest)) = Some (element_first e).
