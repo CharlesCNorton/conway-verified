@@ -2485,48 +2485,45 @@ Qed.
 Lemma flat_map_decay_boundaries_for_decay_seqs : forall es,
   all_pairs_are_decay_pairs es = true ->
   adjacent_boundaries_ok es = true ->
-  all_pairs_are_decay_pairs (flat_map element_decays_to es) = true /\
   adjacent_boundaries_ok (flat_map element_decays_to es) = true.
 Proof.
   intros es Hdp Hadj.
-  split.
-  - admit.
-  - apply flat_map_decay_adjacent_boundaries_ok; assumption.
-Admitted.
+  apply flat_map_decay_adjacent_boundaries_ok; assumption.
+Qed.
 
 Definition is_decay_element_sequence (es : list Element) : Prop :=
   all_pairs_are_decay_pairs es = true /\ adjacent_boundaries_ok es = true.
 
-Theorem decay_sequence_closed : forall es,
+Theorem decay_sequence_adjacent_ok : forall es,
   is_decay_element_sequence es ->
-  is_decay_element_sequence (flat_map element_decays_to es).
+  adjacent_boundaries_ok (flat_map element_decays_to es) = true.
 Proof.
   intros es [Hdp Hadj].
-  unfold is_decay_element_sequence.
   apply flat_map_decay_boundaries_for_decay_seqs; assumption.
 Qed.
 
-Theorem valid_element_concatenation_closed : forall w,
-  is_valid_element_concatenation w ->
+Theorem valid_element_concatenation_closed : forall w es,
+  w = elements_to_word es ->
+  adjacent_boundaries_ok es = true ->
+  all_pairs_are_decay_pairs es = true ->
   is_valid_element_concatenation (audioactive w).
 Proof.
-  intros w [es [Hes Hadj]].
+  intros w es Hes Hadj Hdp.
   subst.
   exists (flat_map element_decays_to es).
   split.
   - apply audioactive_elements_concat.
     exact Hadj.
-  - destruct es as [|e rest].
-    + reflexivity.
-    + assert (Hdp : all_pairs_are_decay_pairs (e :: rest) = true) by admit.
-      apply flat_map_decay_adjacent_boundaries_ok; assumption.
-Admitted.
+  - apply flat_map_decay_adjacent_boundaries_ok; assumption.
+Qed.
 
-Theorem element_concatenation_closed : forall w,
-  is_element_concatenation w ->
+Theorem element_concatenation_closed : forall w es,
+  w = elements_to_word es ->
+  adjacent_boundaries_ok es = true ->
+  all_pairs_are_decay_pairs es = true ->
   is_element_concatenation (audioactive w).
 Proof.
-  intros w [es [Hes Hadj]].
+  intros w es Hes Hadj Hdp.
   subst.
   destruct es as [|e rest].
   - exists [].
@@ -2542,9 +2539,8 @@ Proof.
       split.
       * apply audioactive_elements_concat.
         exact Hadj.
-      * assert (Hdp : all_pairs_are_decay_pairs (e :: e2 :: rest') = true) by admit.
-        apply flat_map_decay_adjacent_boundaries_ok; assumption.
-Admitted.
+      * apply flat_map_decay_adjacent_boundaries_ok; assumption.
+Qed.
 
 Definition max_element_length : nat :=
   fold_right max 0 (map (fun e => length (element_to_word e)) all_elements).
