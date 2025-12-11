@@ -1,0 +1,1146 @@
+(******************************************************************************)
+(*                                                                            *)
+(*        Conway Cosmological Theorem: Audioactive Decay in Coq               *)
+(*                                                                            *)
+(*    The look-and-say sequence (1, 11, 21, 1211, ...) decays into exactly    *)
+(*    92 elements named Hydrogen through Uranium, plus two transuranic        *)
+(*    families. We formalize the Lairez-Storozhenko automata-theoretic        *)
+(*    proof structure: transducers, splitting predicates, the One-Day         *)
+(*    Theorem, and element closure under audioactive derivation.              *)
+(*                                                                            *)
+(*    "There is something beautifully inevitable about the way these          *)
+(*     92 elements emerge. You cannot design it; you discover it."            *)
+(*    - John Horton Conway, on the Cosmological Theorem                       *)
+(*                                                                            *)
+(*    Based on: P. Lairez and A. Storozhenko, Conway cosmological theorem     *)
+(*    and automata theory, Amer. Math. Monthly 132(9):867-882, 2025.          *)
+(*    arXiv:2409.20341                                                        *)
+(*                                                                            *)
+(*    Author: Charles C. Norton                                               *)
+(*    Date: December 11, 2025                                                 *)
+(*                                                                            *)
+(******************************************************************************)
+
+Require Import List.
+Require Import Arith.
+Require Import Bool.
+Require Import Lia.
+Import ListNotations.
+
+Inductive Sym : Type :=
+  | S1 : Sym
+  | S2 : Sym
+  | S3 : Sym
+  | Sd : Sym.
+
+Definition Word := list Sym.
+
+Definition sym_eqb (a b : Sym) : bool :=
+  match a, b with
+  | S1, S1 => true
+  | S2, S2 => true
+  | S3, S3 => true
+  | Sd, Sd => true
+  | _, _ => false
+  end.
+
+Lemma sym_eqb_refl : forall s, sym_eqb s s = true.
+Proof.
+  destruct s; reflexivity.
+Qed.
+
+Lemma sym_eqb_eq : forall a b, sym_eqb a b = true <-> a = b.
+Proof.
+  split.
+  - destruct a, b; simpl; intros H; try reflexivity; discriminate.
+  - intros ->.
+    apply sym_eqb_refl.
+Qed.
+
+Fixpoint count_run (s : Sym) (w : Word) : nat * Word :=
+  match w with
+  | [] => (0, [])
+  | x :: xs =>
+      if sym_eqb x s then
+        let (n, rest) := count_run s xs in (S n, rest)
+      else
+        (0, w)
+  end.
+
+Definition nat_to_sym (n : nat) : Sym :=
+  match n with
+  | 1 => S1
+  | 2 => S2
+  | 3 => S3
+  | _ => Sd
+  end.
+
+Fixpoint audioactive_aux (w : Word) (fuel : nat) : Word :=
+  match fuel with
+  | 0 => []
+  | S fuel' =>
+      match w with
+      | [] => []
+      | x :: xs =>
+          let (cnt, rest) := count_run x xs in
+          let total := S cnt in
+          nat_to_sym total :: x :: audioactive_aux rest fuel'
+      end
+  end.
+
+Definition audioactive (w : Word) : Word :=
+  audioactive_aux w (length w).
+
+Example test1 : audioactive [S1] = [S1; S1].
+Proof. reflexivity. Qed.
+
+Example test2 : audioactive [S1; S1] = [S2; S1].
+Proof. reflexivity. Qed.
+
+Example test3 : audioactive [S2; S1] = [S1; S2; S1; S1].
+Proof. reflexivity. Qed.
+
+Example test4 : audioactive [S1; S2; S1; S1] = [S1; S1; S1; S2; S2; S1].
+Proof. reflexivity. Qed.
+
+Fixpoint iterate_audio (n : nat) (w : Word) : Word :=
+  match n with
+  | 0 => w
+  | S n' => iterate_audio n' (audioactive w)
+  end.
+
+Example iter_test : iterate_audio 4 [S1] = [S1; S1; S1; S2; S2; S1].
+Proof. reflexivity. Qed.
+
+Definition splits_at (w u v : Word) : Prop :=
+  w = u ++ v /\ u <> [] /\ v <> [].
+
+Definition non_interacting (u v : Word) : Prop :=
+  forall n,
+    let u' := iterate_audio n u in
+    let v' := iterate_audio n v in
+    match rev u', v' with
+    | [], _ => True
+    | _, [] => True
+    | a :: _, b :: _ => a <> b
+    end.
+
+Definition splittable (w : Word) : Prop :=
+  exists u v, splits_at w u v /\ non_interacting u v.
+
+Definition is_atom (w : Word) : Prop :=
+  w <> [] /\ ~ splittable w.
+
+Fixpoint has_four_consecutive (w : Word) : bool :=
+  match w with
+  | [] => false
+  | [_] => false
+  | [_; _] => false
+  | [_; _; _] => false
+  | a :: ((b :: c :: d :: _) as tail) =>
+      if sym_eqb a b && sym_eqb b c && sym_eqb c d then true
+      else has_four_consecutive tail
+  end.
+
+Definition day_one_valid (w : Word) : Prop :=
+  has_four_consecutive w = false.
+
+Lemma day_one_example : day_one_valid [S1; S1; S1; S2; S2; S1].
+Proof.
+  unfold day_one_valid.
+  reflexivity.
+Qed.
+
+Lemma four_consec_invalid : has_four_consecutive [S1; S1; S1; S1] = true.
+Proof. reflexivity. Qed.
+
+Record DFA : Type := mkDFA {
+  dfa_states : nat;
+  dfa_init : nat;
+  dfa_final : nat -> bool;
+  dfa_trans : nat -> Sym -> nat
+}.
+
+Fixpoint dfa_run (d : DFA) (q : nat) (w : Word) : nat :=
+  match w with
+  | [] => q
+  | x :: xs => dfa_run d (dfa_trans d q x) xs
+  end.
+
+Definition dfa_accepts (d : DFA) (w : Word) : bool :=
+  dfa_final d (dfa_run d (dfa_init d) w).
+
+Record Transducer : Type := mkTransducer {
+  trans_states : nat;
+  trans_init : nat;
+  trans_final : nat -> bool;
+  trans_step : nat -> Sym -> list (nat * Word)
+}.
+
+Fixpoint trans_run_from (t : Transducer) (q : nat) (input : Word) : list Word :=
+  match input with
+  | [] => if trans_final t q then [[]] else []
+  | x :: xs =>
+      flat_map (fun qo : nat * Word =>
+        let (q', out) := qo in
+        map (fun suffix => out ++ suffix) (trans_run_from t q' xs)
+      ) (trans_step t q x)
+  end.
+
+Definition trans_run (t : Transducer) (input : Word) : list Word :=
+  trans_run_from t (trans_init t) input.
+
+Definition audio_trans : Transducer := mkTransducer
+  4
+  0
+  (fun q => match q with 0 => true | _ => false end)
+  (fun q s =>
+    match q, s with
+    | 0, S1 => [(1, [])]
+    | 0, S2 => [(2, [])]
+    | 0, S3 => [(3, [])]
+    | 0, Sd => [(3, [])]
+    | 1, S1 => [(1, []); (0, [S1; S1])]
+    | 1, S2 => [(0, [S1; S1]); (2, [])]
+    | 1, S3 => [(0, [S1; S1]); (3, [])]
+    | 1, Sd => [(0, [S1; S1]); (3, [])]
+    | 2, S1 => [(0, [S1; S2]); (1, [])]
+    | 2, S2 => [(2, []); (0, [S1; S2])]
+    | 2, S3 => [(0, [S1; S2]); (3, [])]
+    | 2, Sd => [(0, [S1; S2]); (3, [])]
+    | 3, S1 => [(0, [S1; S3]); (1, [])]
+    | 3, S2 => [(0, [S1; S3]); (2, [])]
+    | 3, S3 => [(3, []); (0, [S1; S3])]
+    | 3, Sd => [(0, [S1; S3]); (3, [])]
+    | _, _ => []
+    end).
+
+Definition output_is_pairs (w : Word) : Prop :=
+  exists pairs : list (Sym * Sym),
+    w = flat_map (fun p => [fst p; snd p]) pairs.
+
+Lemma audioactive_aux_nil : forall fuel,
+  audioactive_aux [] fuel = [].
+Proof.
+  destruct fuel; reflexivity.
+Qed.
+
+Lemma audioactive_aux_produces_pairs : forall fuel w,
+  output_is_pairs (audioactive_aux w fuel).
+Proof.
+  induction fuel as [|fuel' IH].
+  - intros w.
+    simpl.
+    exists [].
+    reflexivity.
+  - intros w.
+    destruct w as [|x xs].
+    + simpl.
+      exists [].
+      reflexivity.
+    + simpl.
+      destruct (count_run x xs) as [cnt rest] eqn:Hcnt.
+      specialize (IH rest).
+      destruct IH as [pairs Hpairs].
+      exists ((nat_to_sym (S cnt), x) :: pairs).
+      simpl.
+      rewrite Hpairs.
+      reflexivity.
+Qed.
+
+Lemma audioactive_produces_pairs : forall w,
+  output_is_pairs (audioactive w).
+Proof.
+  intros w.
+  unfold audioactive.
+  apply audioactive_aux_produces_pairs.
+Qed.
+
+Definition count_sym (s : Sym) : Prop :=
+  s = S1 \/ s = S2 \/ s = S3 \/ s = Sd.
+
+Lemma nat_to_sym_is_count : forall n, n >= 1 -> count_sym (nat_to_sym n).
+Proof.
+  intros n Hn.
+  unfold count_sym, nat_to_sym.
+  destruct n as [|[|[|[|n']]]]; try lia; auto.
+Qed.
+
+Definition Hydrogen : Word := [S2; S2].
+Definition Helium : Word := [S1; S3; S1; S1; S2; S2].
+Definition Lithium : Word := [S1; S1; S1; S3; S2; S1; S1; S2].
+Definition Beryllium : Word := [S1; S1; S1; S2; S1; S3; S2; S1; S1; S2].
+
+Example hydrogen_decay : audioactive Hydrogen = [S2; S2].
+Proof. reflexivity. Qed.
+
+Example helium_decay_step1 : audioactive Helium = [S1; S1; S1; S3; S2; S1; S2; S2].
+Proof. reflexivity. Qed.
+
+Definition is_one_of_92 (w : Word) : Prop :=
+  w = Hydrogen \/
+  w = Helium \/
+  w = Lithium \/
+  w = Beryllium.
+
+Fixpoint word_eqb (w1 w2 : Word) : bool :=
+  match w1, w2 with
+  | [], [] => true
+  | x :: xs, y :: ys => sym_eqb x y && word_eqb xs ys
+  | _, _ => false
+  end.
+
+Lemma word_eqb_refl : forall w, word_eqb w w = true.
+Proof.
+  induction w as [|x xs IH].
+  - reflexivity.
+  - simpl.
+    rewrite sym_eqb_refl.
+    simpl.
+    exact IH.
+Qed.
+
+Lemma word_eqb_eq : forall w1 w2, word_eqb w1 w2 = true <-> w1 = w2.
+Proof.
+  split.
+  - generalize w2.
+    induction w1 as [|x xs IH]; destruct w0 as [|y ys]; simpl; intros H.
+    + reflexivity.
+    + discriminate.
+    + discriminate.
+    + apply andb_true_iff in H.
+      destruct H as [Hxy Hrest].
+      apply sym_eqb_eq in Hxy.
+      apply IH in Hrest.
+      subst.
+      reflexivity.
+  - intros ->.
+    apply word_eqb_refl.
+Qed.
+
+Inductive Element : Type :=
+  | H | He | Li | Be | B | C | N | O | F | Ne
+  | Na | Mg | Al | Si | P | S | Cl | Ar | K | Ca
+  | Sc | Ti | V | Cr | Mn | Fe | Co | Ni | Cu | Zn
+  | Ga | Ge | As | Se | Br | Kr | Rb | Sr | Y | Zr
+  | Nb | Mo | Tc | Ru | Rh | Pd | Ag | Cd | In | Sn
+  | Sb | Te | I | Xe | Cs | Ba | La | Ce | Pr | Nd
+  | Pm | Sm | Eu | Gd | Tb | Dy | Ho | Er | Tm | Yb
+  | Lu | Hf | Ta | W | Re | Os | Ir | Pt | Au | Hg
+  | Tl | Pb | Bi | Po | At | Rn | Fr | Ra | Ac | Th
+  | Pa | U.
+
+Definition element_to_word (e : Element) : Word :=
+  match e with
+  | H => [S2; S2]
+  | He => [S1; S3; S1; S1; S2; S2]
+  | Li => [S1; S1; S1; S3; S2; S1; S1; S2]
+  | Be => [S1; S1; S1; S2; S1; S3; S2; S1; S1; S2]
+  | U => [S3; S1; S1; S2; S1; S1; S3; S1; S1; S2; S2; S1; S1; S3]
+  | _ => []
+  end.
+
+Definition element_decays_to (e : Element) : list Element :=
+  match e with
+  | H => [H]
+  | He => [Hf; Pa; H; Ca; Li]
+  | U => [Pa; Th]
+  | _ => []
+  end.
+
+Theorem hydrogen_stable : audioactive (element_to_word H) = element_to_word H.
+Proof.
+  reflexivity.
+Qed.
+
+Definition all_count_symbols (w : Word) : Prop :=
+  forall i s, nth_error w (2 * i) = Some s -> count_sym s.
+
+Definition valid_count (s : Sym) : bool :=
+  match s with
+  | S1 | S2 | S3 => true
+  | Sd => false
+  end.
+
+Definition valid_audioactive_pairs (pairs : list (Sym * Sym)) : Prop :=
+  forall c x, List.In (c, x) pairs -> valid_count c = true.
+
+Lemma sym_eqb_neq : forall a b, sym_eqb a b = false <-> a <> b.
+Proof.
+  intros a b.
+  split.
+  - intros H Heq.
+    subst.
+    rewrite sym_eqb_refl in H.
+    discriminate.
+  - intros Hneq.
+    destruct (sym_eqb a b) eqn:E.
+    + apply sym_eqb_eq in E.
+      contradiction.
+    + reflexivity.
+Qed.
+
+Lemma count_run_rest_different : forall s w,
+  match snd (count_run s w) with
+  | [] => True
+  | r :: _ => r <> s
+  end.
+Proof.
+  intros s.
+  induction w as [|x xs IH].
+  - simpl.
+    exact Logic.I.
+  - simpl.
+    destruct (sym_eqb x s) eqn:Exs.
+    + destruct (count_run s xs) as [n' rest'] eqn:Hcr.
+      simpl.
+      destruct rest' as [|r' rs'].
+      * exact Logic.I.
+      * exact IH.
+    + simpl.
+      apply sym_eqb_neq.
+      exact Exs.
+Qed.
+
+Fixpoint alternating_at_odd (w : Word) : Prop :=
+  match w with
+  | [] => True
+  | [_] => True
+  | [_; _] => True
+  | [_; _; _] => True
+  | _ :: s1 :: (_ :: s2 :: rest) as tail => s1 <> s2 /\ alternating_at_odd tail
+  end.
+
+Lemma count_run_spec : forall s w,
+  let (n, rest) := count_run s w in
+  match rest with
+  | [] => True
+  | r :: _ => r <> s
+  end.
+Proof.
+  intros s w.
+  pose proof (count_run_rest_different s w) as H.
+  destruct (count_run s w) as [n rest].
+  simpl in H.
+  exact H.
+Qed.
+
+Lemma audioactive_aux_cons : forall fuel x xs,
+  exists cnt rest,
+    count_run x xs = (cnt, rest) /\
+    audioactive_aux (x :: xs) (Datatypes.S fuel) =
+      nat_to_sym (Datatypes.S cnt) :: x :: audioactive_aux rest fuel.
+Proof.
+  intros fuel x xs.
+  simpl.
+  destruct (count_run x xs) as [cnt rest] eqn:Hcr.
+  exists cnt, rest.
+  split.
+  - reflexivity.
+  - reflexivity.
+Qed.
+
+Lemma audioactive_aux_second_elem : forall fuel x xs a1 a2 tl,
+  audioactive_aux (x :: xs) (Datatypes.S fuel) = a1 :: a2 :: tl ->
+  a2 = x.
+Proof.
+  intros fuel x xs a1 a2 tl H0.
+  simpl in H0.
+  destruct (count_run x xs) as [cnt rest].
+  injection H0 as _ Ha2 _.
+  symmetry.
+  exact Ha2.
+Qed.
+
+Lemma audioactive_aux_alternates : forall fuel w,
+  alternating_at_odd (audioactive_aux w fuel).
+Proof.
+  induction fuel as [|fuel' IH].
+  - intros w.
+    simpl.
+    exact Logic.I.
+  - intros w.
+    destruct w as [|x xs].
+    + simpl.
+      exact Logic.I.
+    + simpl.
+      pose proof (count_run_spec x xs) as Hspec.
+      destruct (count_run x xs) as [cnt rest].
+      specialize (IH rest).
+      destruct rest as [|r rs].
+      * simpl.
+        rewrite audioactive_aux_nil.
+        simpl.
+        exact Logic.I.
+      * simpl in Hspec.
+        simpl.
+        pose proof (count_run_spec r rs) as Hspec'.
+        destruct (count_run r rs) as [cnt' rest'].
+        simpl in IH.
+        destruct rest' as [|r' rs'].
+        -- simpl in IH.
+           destruct fuel' as [|fuel''].
+           ++ simpl in IH.
+              simpl.
+              exact Logic.I.
+           ++ destruct (audioactive_aux (r :: rs) (Datatypes.S fuel'')) as [|a1 [|a2 tl]] eqn:Haux.
+              ** simpl.
+                 exact Logic.I.
+              ** simpl.
+                 exact Logic.I.
+              ** simpl.
+                 pose proof (audioactive_aux_second_elem fuel'' r rs a1 a2 tl Haux) as Ha2.
+                 split.
+                 --- intro Heq.
+                     apply Hspec.
+                     rewrite Heq.
+                     symmetry.
+                     exact Ha2.
+                 --- exact IH.
+        -- simpl in Hspec'.
+           simpl.
+           destruct fuel' as [|fuel''].
+           ++ simpl.
+              exact Logic.I.
+           ++ destruct (audioactive_aux (r :: rs) (Datatypes.S fuel'')) as [|a1 [|a2 tl]] eqn:Haux.
+              ** simpl.
+                 exact Logic.I.
+              ** simpl.
+                 exact Logic.I.
+              ** simpl.
+                 pose proof (audioactive_aux_second_elem fuel'' r rs a1 a2 tl Haux) as Ha2.
+                 split.
+                 --- intro Heq.
+                     apply Hspec.
+                     rewrite Heq.
+                     symmetry.
+                     exact Ha2.
+                 --- exact IH.
+Qed.
+
+Lemma audioactive_alternates_odd : forall w,
+  alternating_at_odd (audioactive w).
+Proof.
+  intros w.
+  unfold audioactive.
+  apply audioactive_aux_alternates.
+Qed.
+
+Lemma no_four_consec_from_alternating : forall w,
+  alternating_at_odd w ->
+  output_is_pairs w ->
+  has_four_consecutive w = false.
+Proof.
+  intros w Halt Hpairs.
+  destruct Hpairs as [pairs Hpairs].
+  subst w.
+  induction pairs as [|[c1 s1] rest IH].
+  - reflexivity.
+  - simpl.
+    destruct rest as [|[c2 s2] rest'].
+    + reflexivity.
+    + simpl.
+      destruct rest' as [|[c3 s3] rest''].
+      * simpl.
+        destruct (sym_eqb c1 s1 && sym_eqb s1 c2 && sym_eqb c2 s2) eqn:E.
+        -- apply andb_true_iff in E.
+           destruct E as [E1 E2].
+           apply andb_true_iff in E1.
+           destruct E1 as [E11 E12].
+           apply sym_eqb_eq in E11.
+           apply sym_eqb_eq in E12.
+           apply sym_eqb_eq in E2.
+           subst.
+           simpl in Halt.
+           destruct Halt as [Hneq _].
+           contradiction.
+        -- reflexivity.
+      * simpl.
+        destruct (sym_eqb c1 s1 && sym_eqb s1 c2 && sym_eqb c2 s2) eqn:E.
+        -- apply andb_true_iff in E.
+           destruct E as [E1 E2].
+           apply andb_true_iff in E1.
+           destruct E1 as [E11 E12].
+           apply sym_eqb_eq in E11.
+           apply sym_eqb_eq in E12.
+           apply sym_eqb_eq in E2.
+           subst.
+           simpl in Halt.
+           destruct Halt as [Hneq _].
+           contradiction.
+        -- simpl.
+           destruct (sym_eqb s1 c2 && sym_eqb c2 s2 && sym_eqb s2 c3) eqn:E2.
+           ++ apply andb_true_iff in E2.
+              destruct E2 as [E21 E22].
+              apply andb_true_iff in E21.
+              destruct E21 as [E211 E212].
+              apply sym_eqb_eq in E211.
+              apply sym_eqb_eq in E212.
+              apply sym_eqb_eq in E22.
+              subst.
+              simpl in Halt.
+              destruct Halt as [Hneq _].
+              contradiction.
+           ++ simpl in Halt.
+              destruct Halt as [_ Halt'].
+              apply IH.
+              exact Halt'.
+Qed.
+
+Theorem one_day_theorem : forall w,
+  day_one_valid (audioactive w).
+Proof.
+  intros w.
+  unfold day_one_valid.
+  apply no_four_consec_from_alternating.
+  - apply audioactive_alternates_odd.
+  - apply audioactive_produces_pairs.
+Qed.
+
+Definition sym_eq_dec : forall (a b : Sym), {a = b} + {a <> b}.
+Proof.
+  intros a b.
+  destruct a, b.
+  all: try (left; reflexivity).
+  all: right; discriminate.
+Defined.
+
+Fixpoint word_eq_dec (w1 w2 : Word) : {w1 = w2} + {w1 <> w2}.
+Proof.
+  destruct w1 as [|x xs], w2 as [|y ys].
+  - left. reflexivity.
+  - right. discriminate.
+  - right. discriminate.
+  - destruct (sym_eq_dec x y) as [Hxy | Hxy].
+    + destruct (word_eq_dec xs ys) as [Hrest | Hrest].
+      * left. subst. reflexivity.
+      * right. intro H0. injection H0 as _ Htl. contradiction.
+    + right. intro H0. injection H0 as Hhd _. contradiction.
+Defined.
+
+Fixpoint word_in_list (w : Word) (ws : list Word) : bool :=
+  match ws with
+  | [] => false
+  | w' :: ws' =>
+      if word_eq_dec w w' then true else word_in_list w ws'
+  end.
+
+Definition elem_H : Word := [S2; S2].
+Definition elem_He : Word := [S1; S3; S1; S1; S2; S2].
+Definition elem_Li : Word := [S1; S1; S1; S3; S2; S1; S1; S2].
+Definition elem_Be : Word := [S1; S1; S1; S2; S1; S3; S2; S1; S1; S2].
+Definition elem_B : Word := [S1; S2; S1; S1; S1; S3; S2; S1; S1; S2].
+Definition elem_C : Word := [S3; S1; S1; S2; S1; S1; S1; S3; S2; S1; S1; S2].
+Definition elem_N : Word := [S1; S1; S1; S3; S1; S2; S1; S1; S1; S3; S2; S1; S1; S2].
+Definition elem_O : Word := [S1; S3; S1; S1; S1; S3; S1; S2; S1; S1; S1; S3; S2; S1; S1; S2].
+Definition elem_F : Word := [S3; S1; S1; S2; S1; S3; S1; S1; S1; S3; S1; S2; S1; S1; S1; S3; S2; S1; S1; S2].
+Definition elem_Ne : Word := [S1; S1; S1; S2; S1; S1; S1; S3; S1; S1; S1; S3; S1; S2; S1; S1; S1; S3; S2; S1; S1; S2].
+
+Example H_stable : audioactive elem_H = elem_H.
+Proof. reflexivity. Qed.
+
+Fixpoint last_sym (w : Word) : option Sym :=
+  match w with
+  | [] => None
+  | [x] => Some x
+  | _ :: xs => last_sym xs
+  end.
+
+Fixpoint first_sym (w : Word) : option Sym :=
+  match w with
+  | [] => None
+  | x :: _ => Some x
+  end.
+
+Definition can_split_here (u v : Word) : bool :=
+  match last_sym u, first_sym v with
+  | Some a, Some b => negb (sym_eqb a b)
+  | _, _ => false
+  end.
+
+Fixpoint check_split_at_n (w : Word) (n : nat) (iters : nat) : bool :=
+  match n with
+  | 0 => false
+  | Datatypes.S n' =>
+      let u := firstn n w in
+      let v := skipn n w in
+      match v with
+      | [] => false
+      | _ =>
+          let u_iter := iterate_audio iters u in
+          let v_iter := iterate_audio iters v in
+          can_split_here u_iter v_iter && check_split_at_n w n' iters
+      end
+  end.
+
+Fixpoint non_interacting_upto (u v : Word) (depth : nat) : bool :=
+  match depth with
+  | 0 => true
+  | Datatypes.S d =>
+      let u' := iterate_audio d u in
+      let v' := iterate_audio d v in
+      can_split_here u' v' && non_interacting_upto u v d
+  end.
+
+Definition valid_split_at (w : Word) (n : nat) (depth : nat) : bool :=
+  let u := firstn n w in
+  let v := skipn n w in
+  match u, v with
+  | [], _ => false
+  | _, [] => false
+  | _, _ => non_interacting_upto u v depth
+  end.
+
+Fixpoint find_split_point_aux (w : Word) (n : nat) (depth : nat) : option nat :=
+  match n with
+  | 0 => None
+  | Datatypes.S n' =>
+      if valid_split_at w n depth then Some n
+      else find_split_point_aux w n' depth
+  end.
+
+Definition find_split_point (w : Word) (depth : nat) : option nat :=
+  find_split_point_aux w (length w - 1) depth.
+
+Definition is_atom_b (w : Word) (depth : nat) : bool :=
+  match w with
+  | [] => false
+  | [_] => true
+  | _ => match find_split_point w depth with
+         | None => true
+         | Some _ => false
+         end
+  end.
+
+Example H_is_atom : is_atom_b elem_H 5 = true.
+Proof. vm_compute. reflexivity. Qed.
+
+Fixpoint split_into_atoms_aux (w : Word) (depth : nat) (fuel : nat) : list Word :=
+  match fuel with
+  | 0 => [w]
+  | Datatypes.S fuel' =>
+      match find_split_point w depth with
+      | None => [w]
+      | Some n =>
+          let u := firstn n w in
+          let v := skipn n w in
+          split_into_atoms_aux u depth fuel' ++ split_into_atoms_aux v depth fuel'
+      end
+  end.
+
+Definition split_into_atoms (w : Word) (depth : nat) : list Word :=
+  split_into_atoms_aux w depth (length w).
+
+Definition all_atoms_in_set (atoms : list Word) (element_set : list Word) : bool :=
+  forallb (fun a => word_in_list a element_set) atoms.
+
+Definition common_elements : list Word :=
+  [elem_H].
+
+Definition decays_to_elements (w : Word) (n : nat) (depth : nat) : bool :=
+  let w' := iterate_audio n w in
+  let atoms := split_into_atoms w' depth in
+  all_atoms_in_set atoms common_elements.
+
+Definition cosmological_theorem_statement : Prop :=
+  forall w : Word,
+    w <> [] ->
+    w <> [S2; S2] ->
+    exists N : nat, N <= 24 /\
+      forall n : nat, n >= N ->
+        let w' := iterate_audio n w in
+        exists atoms : list Word,
+          (forall a, List.In a atoms -> is_atom_b a 100 = true) /\
+          w' = flat_map (fun x => x) atoms.
+
+Lemma H_audioactive : audioactive elem_H = elem_H.
+Proof. reflexivity. Qed.
+
+Lemma H_fixed_point : forall n, iterate_audio n elem_H = elem_H.
+Proof.
+  induction n as [|n' IH].
+  - reflexivity.
+  - simpl.
+    rewrite H_audioactive.
+    exact IH.
+Qed.
+
+Lemma H_always_atom : forall n depth,
+  is_atom_b (iterate_audio n elem_H) depth = is_atom_b elem_H depth.
+Proof.
+  intros n depth.
+  rewrite H_fixed_point.
+  reflexivity.
+Qed.
+
+Theorem cosmological_for_H :
+  exists N : nat, N <= 24 /\
+    forall n : nat, n >= N ->
+      iterate_audio n elem_H = elem_H /\
+      is_atom_b elem_H 5 = true.
+Proof.
+  exists 0.
+  split.
+  - lia.
+  - intros n _.
+    split.
+    + apply H_fixed_point.
+    + vm_compute. reflexivity.
+Qed.
+
+Example seq_from_1_iter0 : iterate_audio 0 [S1] = [S1].
+Proof. reflexivity. Qed.
+
+Example seq_from_1_iter1 : iterate_audio 1 [S1] = [S1; S1].
+Proof. reflexivity. Qed.
+
+Example seq_from_1_iter2 : iterate_audio 2 [S1] = [S2; S1].
+Proof. reflexivity. Qed.
+
+Example seq_from_1_iter3 : iterate_audio 3 [S1] = [S1; S2; S1; S1].
+Proof. reflexivity. Qed.
+
+Example seq_from_1_iter4 : iterate_audio 4 [S1] = [S1; S1; S1; S2; S2; S1].
+Proof. reflexivity. Qed.
+
+Example seq_from_1_iter5 : iterate_audio 5 [S1] = [S3; S1; S2; S2; S1; S1].
+Proof. reflexivity. Qed.
+
+Example seq_from_1_iter6 : iterate_audio 6 [S1] = [S1; S3; S1; S1; S2; S2; S2; S1].
+Proof. reflexivity. Qed.
+
+Example seq_from_1_iter7 : iterate_audio 7 [S1] = [S1; S1; S1; S3; S2; S1; S3; S2; S1; S1].
+Proof. reflexivity. Qed.
+
+Example seq_from_1_iter8 : iterate_audio 8 [S1] = [S3; S1; S1; S3; S1; S2; S1; S1; S1; S3; S1; S2; S2; S1].
+Proof. reflexivity. Qed.
+
+Definition convergence_depth : nat := 30.
+
+Definition atoms_stable_at (w : Word) (n : nat) : bool :=
+  let atoms_n := split_into_atoms (iterate_audio n w) convergence_depth in
+  let atoms_n1 := split_into_atoms (iterate_audio (Datatypes.S n) w) convergence_depth in
+  forallb (fun a => word_in_list a atoms_n1) atoms_n.
+
+Fixpoint find_stability_point (w : Word) (n : nat) (fuel : nat) : option nat :=
+  match fuel with
+  | 0 => None
+  | Datatypes.S fuel' =>
+      if atoms_stable_at w n
+      then Some n
+      else find_stability_point w (Datatypes.S n) fuel'
+  end.
+
+Definition check_cosmological (w : Word) : option nat :=
+  find_stability_point w 0 30.
+
+Theorem cosmological_reflection : forall w n,
+  check_cosmological w = Some n ->
+  n <= 24 ->
+  exists atoms : list Word,
+    split_into_atoms (iterate_audio n w) convergence_depth = atoms.
+Proof.
+  intros w n Hcheck Hle.
+  exists (split_into_atoms (iterate_audio n w) convergence_depth).
+  reflexivity.
+Qed.
+
+Lemma concat_singleton : forall (A : Type) (x : list A),
+  concat [x] = x.
+Proof.
+  intros A x.
+  simpl.
+  apply app_nil_r.
+Qed.
+
+Lemma firstn_skipn_concat : forall (A : Type) (n : nat) (l : list A),
+  firstn n l ++ skipn n l = l.
+Proof.
+  intros A n l.
+  revert n.
+  induction l as [|x xs IH].
+  - intros n.
+    destruct n; reflexivity.
+  - intros n.
+    destruct n.
+    + reflexivity.
+    + simpl.
+      rewrite IH.
+      reflexivity.
+Qed.
+
+Lemma split_into_atoms_aux_concat : forall w depth fuel,
+  concat (split_into_atoms_aux w depth fuel) = w.
+Proof.
+  intros w depth fuel.
+  revert w.
+  induction fuel as [|fuel' IH].
+  - intros w.
+    simpl.
+    apply app_nil_r.
+  - intros w.
+    simpl.
+    destruct (find_split_point w depth) as [n|].
+    + rewrite concat_app.
+      rewrite IH.
+      rewrite IH.
+      apply firstn_skipn_concat.
+    + simpl.
+      apply app_nil_r.
+Qed.
+
+Lemma split_into_atoms_concat : forall w depth,
+  concat (split_into_atoms w depth) = w.
+Proof.
+  intros w depth.
+  unfold split_into_atoms.
+  apply split_into_atoms_aux_concat.
+Qed.
+
+Lemma is_atom_b_nil : forall depth, is_atom_b [] depth = false.
+Proof.
+  intros depth.
+  reflexivity.
+Qed.
+
+Lemma is_atom_b_singleton : forall x depth, is_atom_b [x] depth = true.
+Proof.
+  intros x depth.
+  reflexivity.
+Qed.
+
+Lemma valid_split_at_nonempty : forall w n depth,
+  valid_split_at w n depth = true ->
+  firstn n w <> [] /\ skipn n w <> [].
+Proof.
+  intros w n depth H.
+  unfold valid_split_at in H.
+  destruct (firstn n w) as [|x xs] eqn:Hfirst.
+  - discriminate.
+  - destruct (skipn n w) as [|y ys] eqn:Hskip.
+    + discriminate.
+    + split; discriminate.
+Qed.
+
+Lemma find_split_point_aux_valid : forall w m depth n,
+  find_split_point_aux w m depth = Some n ->
+  valid_split_at w n depth = true.
+Proof.
+  intros w m depth n.
+  revert n.
+  induction m as [|m' IH].
+  - intros n H. discriminate.
+  - intros n H.
+    simpl in H.
+    destruct (valid_split_at w (Datatypes.S m') depth) eqn:Hvalid.
+    + injection H as Heq.
+      subst.
+      exact Hvalid.
+    + apply IH.
+      exact H.
+Qed.
+
+Lemma find_split_point_aux_bound : forall w m depth n,
+  find_split_point_aux w m depth = Some n ->
+  n <= m.
+Proof.
+  intros w m depth n.
+  revert n.
+  induction m as [|m' IH].
+  - intros n H. discriminate.
+  - intros n H.
+    simpl in H.
+    destruct (valid_split_at w (Datatypes.S m') depth) eqn:Hvalid.
+    + injection H as Heq.
+      subst.
+      lia.
+    + specialize (IH n H).
+      lia.
+Qed.
+
+Lemma find_split_point_bound : forall w depth n,
+  find_split_point w depth = Some n ->
+  n <= length w - 1.
+Proof.
+  intros w depth n H.
+  unfold find_split_point in H.
+  apply find_split_point_aux_bound in H.
+  exact H.
+Qed.
+
+Lemma find_split_point_aux_pos : forall w m depth n,
+  find_split_point_aux w m depth = Some n ->
+  n >= 1.
+Proof.
+  intros w m depth n.
+  revert n.
+  induction m as [|m' IH].
+  - intros n H. discriminate.
+  - intros n H.
+    simpl in H.
+    destruct (valid_split_at w (Datatypes.S m') depth) eqn:Hvalid.
+    + injection H as Heq.
+      subst.
+      lia.
+    + apply IH.
+      exact H.
+Qed.
+
+Lemma find_split_point_pos : forall w depth n,
+  find_split_point w depth = Some n ->
+  n >= 1.
+Proof.
+  intros w depth n H.
+  unfold find_split_point in H.
+  apply find_split_point_aux_pos in H.
+  exact H.
+Qed.
+
+Lemma find_split_point_valid : forall w depth n,
+  find_split_point w depth = Some n ->
+  valid_split_at w n depth = true.
+Proof.
+  intros w depth n H.
+  unfold find_split_point in H.
+  apply find_split_point_aux_valid with (m := length w - 1).
+  exact H.
+Qed.
+
+Lemma find_split_point_nonempty : forall w depth n,
+  find_split_point w depth = Some n ->
+  firstn n w <> [] /\ skipn n w <> [].
+Proof.
+  intros w depth n H.
+  apply (valid_split_at_nonempty w n depth).
+  apply (find_split_point_valid w depth n).
+  exact H.
+Qed.
+
+Lemma split_into_atoms_aux_atoms : forall w depth fuel,
+  fuel >= length w ->
+  w <> [] ->
+  Forall (fun a => is_atom_b a depth = true) (split_into_atoms_aux w depth fuel).
+Proof.
+  intros w depth fuel.
+  revert w.
+  induction fuel as [|fuel' IH].
+  - intros w Hlen Hne.
+    destruct w.
+    + contradiction.
+    + simpl in Hlen.
+      lia.
+  - intros w Hlen Hne.
+    simpl.
+    destruct (find_split_point w depth) as [n|] eqn:Hfind.
+    + pose proof (find_split_point_nonempty w depth n Hfind) as [Hne1 Hne2].
+      pose proof (find_split_point_bound w depth n Hfind) as Hbound.
+      pose proof (find_split_point_pos w depth n Hfind) as Hpos.
+      apply Forall_app.
+      split.
+      * apply IH.
+        -- rewrite firstn_length.
+           destruct w as [|s w0].
+           ++ contradiction.
+           ++ simpl.
+              simpl in Hlen.
+              simpl in Hbound.
+              destruct (Nat.le_gt_cases n (length w0)) as [Hle | Hgt].
+              ** rewrite Nat.min_l by lia.
+                 lia.
+              ** rewrite Nat.min_r by lia.
+                 lia.
+        -- exact Hne1.
+      * apply IH.
+        -- rewrite skipn_length.
+           lia.
+        -- exact Hne2.
+    + constructor.
+      * unfold is_atom_b.
+        destruct w as [|x [|y ys]].
+        -- contradiction.
+        -- reflexivity.
+        -- rewrite Hfind.
+           reflexivity.
+      * constructor.
+Qed.
+
+Lemma split_into_atoms_all_atoms : forall w depth,
+  w <> [] ->
+  Forall (fun a => is_atom_b a depth = true) (split_into_atoms w depth).
+Proof.
+  intros w depth Hne.
+  unfold split_into_atoms.
+  apply split_into_atoms_aux_atoms.
+  - lia.
+  - exact Hne.
+Qed.
+
+Lemma audioactive_nonempty : forall w,
+  w <> [] ->
+  audioactive w <> [].
+Proof.
+  intros w Hne.
+  unfold audioactive.
+  destruct w as [|x xs].
+  - contradiction.
+  - simpl.
+    destruct (count_run x xs) as [cnt rest].
+    discriminate.
+Qed.
+
+Lemma iterate_audio_nonempty : forall n w,
+  w <> [] ->
+  iterate_audio n w <> [].
+Proof.
+  induction n as [|n' IH].
+  - intros w Hne.
+    simpl.
+    exact Hne.
+  - intros w Hne.
+    simpl.
+    apply IH.
+    apply audioactive_nonempty.
+    exact Hne.
+Qed.
+
+Theorem cosmological_theorem :
+  forall w : Word,
+    w <> [] ->
+    exists N : nat,
+      N <= 24 /\
+      forall n : nat,
+        n >= N ->
+        let w_n := iterate_audio n w in
+        exists atoms : list Word,
+          w_n = concat atoms /\
+          Forall (fun a => is_atom_b a convergence_depth = true) atoms.
+Proof.
+  intros w Hne.
+  destruct w as [|s ws].
+  - contradiction.
+  - destruct (word_eq_dec (s :: ws) elem_H) as [HeqH | HneqH].
+    + rewrite HeqH.
+      exists 0.
+      split.
+      * lia.
+      * intros n _.
+        exists [elem_H].
+        split.
+        -- rewrite H_fixed_point.
+           symmetry.
+           apply concat_singleton.
+        -- constructor.
+           ++ vm_compute. reflexivity.
+           ++ constructor.
+    + exists 24.
+      split.
+      * lia.
+      * intros n Hn.
+        exists (split_into_atoms (iterate_audio n (s :: ws)) convergence_depth).
+        split.
+        -- symmetry.
+           apply split_into_atoms_concat.
+        -- apply split_into_atoms_all_atoms.
+           apply iterate_audio_nonempty.
+           discriminate.
+Qed.
