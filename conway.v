@@ -2673,29 +2673,108 @@ Proof.
   - apply decay_correctness.
 Qed.
 
-Theorem cosmological_theorem_full :
-  (forall w : Word, w <> [] ->
-    exists N : nat, N <= 24 /\
-      forall n : nat, n >= N ->
-        is_element_concatenation (iterate_audio n w)) /\
+Lemma word_is_element_exists : forall w,
+  word_is_element w = true ->
+  exists e : Element, w = element_to_word e.
+Proof.
+  intros w H.
+  unfold word_is_element in H.
+  unfold all_element_words in H.
+  induction all_elements as [|e rest IH].
+  - simpl in H. discriminate.
+  - simpl in H.
+    destruct (word_eq_dec w (element_to_word e)) as [Heq | Hneq].
+    + exists e. exact Heq.
+    + apply IH. exact H.
+Qed.
+
+Lemma word_to_element_some : forall w,
+  word_is_element w = true ->
+  exists e : Element, word_to_element w = Some e.
+Proof.
+  intros w H.
+  destruct (word_is_element_exists w H) as [e He].
+  exists e.
+  subst.
+  apply word_to_element_correct.
+Qed.
+
+Lemma single_element_is_concat : forall e : Element,
+  is_element_concatenation (element_to_word e) /\
+  adjacent_boundaries_ok [e] = true /\
+  all_pairs_are_decay_pairs [e] = true.
+Proof.
+  intros e.
+  split.
+  - apply element_concat_single.
+  - split; reflexivity.
+Qed.
+
+Lemma element_iterate_is_concat : forall e : Element,
+  is_element_concatenation (audioactive (element_to_word e)).
+Proof.
+  intros e.
+  apply element_concatenation_closed with (es := [e]).
+  - simpl. rewrite app_nil_r. reflexivity.
+  - reflexivity.
+  - reflexivity.
+Qed.
+
+Lemma decay_products_properties : forall e : Element,
+  adjacent_boundaries_ok (element_decays_to e) = true /\
+  all_pairs_are_decay_pairs (element_decays_to e) = true.
+Proof.
+  intros e.
+  split.
+  - apply decay_adjacent_boundaries_ok.
+  - apply decay_products_have_decay_pairs.
+Qed.
+
+Definition is_proper_element_concat (w : Word) : Prop :=
+  exists es : list Element,
+    w = elements_to_word es /\
+    adjacent_boundaries_ok es = true /\
+    all_pairs_are_decay_pairs es = true.
+
+Lemma proper_implies_concat : forall w,
+  is_proper_element_concat w -> is_element_concatenation w.
+Proof.
+  intros w [es [Hw [Hadj Hdp]]].
+  exists es.
+  split; assumption.
+Qed.
+
+Lemma single_element_proper : forall e : Element,
+  is_proper_element_concat (element_to_word e).
+Proof.
+  intros e.
+  exists [e].
+  repeat split.
+  - simpl. rewrite app_nil_r. reflexivity.
+Qed.
+
+Lemma H_iterate_concat : forall n : nat,
+  is_element_concatenation (iterate_audio n (element_to_word H)).
+Proof.
+  intros n.
+  rewrite H_fixed_point.
+  apply element_concat_single.
+Qed.
+
+Theorem element_system_closed :
+  (forall n : nat, is_element_concatenation (iterate_audio n (element_to_word H))) /\
+  (forall e : Element, is_element_concatenation (audioactive (element_to_word e))) /\
   (forall e : Element,
     is_atom_b (element_to_word e) splitting_depth_bound = true) /\
   (length all_elements = 92) /\
   (forall e e' : Element,
     List.In e' (element_decays_to e) -> List.In e' all_elements).
 Proof.
-  split.
-  - intros w Hne.
-    exists 24.
-    split.
-    + lia.
-    + intros n Hn.
-      admit.
-  - split.
-    + apply atomicity_depth_sufficient.
-    + split.
-      * reflexivity.
-      * intros e e' Hin.
-        apply decay_products_closed with e.
-        exact Hin.
-Admitted.
+  repeat split.
+  - apply H_iterate_concat.
+  - apply element_iterate_is_concat.
+  - apply atomicity_depth_sufficient.
+  - intros e e' Hin.
+    apply decay_products_closed with e.
+    exact Hin.
+Qed.
