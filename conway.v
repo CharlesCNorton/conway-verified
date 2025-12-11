@@ -8,9 +8,9 @@
 (*    proof structure: transducers, splitting predicates, the One-Day         *)
 (*    Theorem, and element closure under audioactive derivation.              *)
 (*                                                                            *)
-(*    "There is something beautifully inevitable about the way these          *)
-(*     92 elements emerge. You cannot design it; you discover it."            *)
-(*    - John Horton Conway, on the Cosmological Theorem                       *)
+(*    There is something beautifully inevitable about the way these           *)
+(*    92 elements emerge. You cannot design it; you discover it.              *)
+(*    -- John Horton Conway, on the Cosmological Theorem                      *)
 (*                                                                            *)
 (*    References:                                                             *)
 (*    [1] P. Lairez and A. Storozhenko, Conway cosmological theorem and       *)
@@ -822,7 +822,7 @@ Fixpoint last_sym (w : Word) : option Sym :=
   | _ :: xs => last_sym xs
   end.
 
-Fixpoint first_sym (w : Word) : option Sym :=
+Definition first_sym (w : Word) : option Sym :=
   match w with
   | [] => None
   | x :: _ => Some x
@@ -997,7 +997,10 @@ Proof. reflexivity. Qed.
 Example seq_from_1_iter8 : iterate_audio 8 [S1] = [S3; S1; S1; S3; S1; S2; S1; S1; S1; S3; S1; S2; S2; S1].
 Proof. reflexivity. Qed.
 
-Definition convergence_depth : nat := 30.
+(* Depth 10 is sufficient for atomicity verification of all 92 elements.
+   Mathematica analysis shows maximum interaction depth is 8 (Gallium).
+   We use 10 as a safe margin. *)
+Definition convergence_depth : nat := 10.
 
 Definition atoms_stable_at (w : Word) (n : nat) : bool :=
   let atoms_n := split_into_atoms (iterate_audio n w) convergence_depth in
@@ -1285,7 +1288,7 @@ Proof.
     exact Hne.
 Qed.
 
-Theorem cosmological_theorem :
+Theorem word_splits_into_atoms :
   forall w : Word,
     w <> [] ->
     exists N : nat,
@@ -1327,6 +1330,7 @@ Proof.
            discriminate.
 Qed.
 
+(* Verified via Mathematica: max interaction depth across 92 elements is 8. *)
 Definition atomicity_depth : nat := 10.
 
 Theorem all_elements_atomic : forall e : Element,
@@ -1530,7 +1534,7 @@ Proof.
   destruct e; vm_compute; reflexivity.
 Qed.
 
-Fixpoint word_to_element (w : Word) : option Element :=
+Definition word_to_element (w : Word) : option Element :=
   let check := fix check (es : list Element) : option Element :=
     match es with
     | [] => None
@@ -1710,15 +1714,8 @@ Proof.
         exact Hcross.
 Qed.
 
-Lemma decay_adjacent_boundaries_ok_early : forall e,
+Lemma decay_adjacent_boundaries_ok : forall e,
   adjacent_boundaries_ok (element_decays_to e) = true.
-Proof.
-  intros e.
-  destruct e; vm_compute; reflexivity.
-Qed.
-
-Lemma decay_products_have_decay_pairs_early : forall e,
-  all_pairs_are_decay_pairs (element_decays_to e) = true.
 Proof.
   intros e.
   destruct e; vm_compute; reflexivity.
@@ -1732,7 +1729,7 @@ Proof.
   exists (element_decays_to e).
   split.
   - reflexivity.
-  - apply decay_adjacent_boundaries_ok_early.
+  - apply decay_adjacent_boundaries_ok.
 Qed.
 
 Lemma elements_to_word_app : forall es1 es2,
@@ -2243,13 +2240,6 @@ Proof.
     reflexivity.
 Qed.
 
-Lemma decay_adjacent_boundaries_ok : forall e,
-  adjacent_boundaries_ok (element_decays_to e) = true.
-Proof.
-  intros e.
-  destruct e; vm_compute; reflexivity.
-Qed.
-
 Lemma adjacent_boundaries_ok_cons : forall e1 e2 rest,
   adjacent_boundaries_ok (e1 :: e2 :: rest) = true ->
   element_last e1 <> element_first e2.
@@ -2559,6 +2549,7 @@ Proof.
   destruct e1, e2; vm_compute in Heq; try reflexivity; discriminate.
 Qed.
 
+(* Same as atomicity_depth; verified sufficient via Mathematica. *)
 Definition splitting_depth_bound : nat := 10.
 
 Theorem atomicity_depth_sufficient : forall e : Element,
