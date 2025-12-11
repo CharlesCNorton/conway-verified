@@ -1598,13 +1598,52 @@ Proof.
       exact Hin.
 Qed.
 
+Definition element_last (e : Element) : Sym :=
+  match last_sym (element_to_word e) with
+  | Some s => s
+  | None => S1
+  end.
+
+Definition element_first (e : Element) : Sym :=
+  match first_sym (element_to_word e) with
+  | Some s => s
+  | None => S1
+  end.
+
+Fixpoint adjacent_boundaries_ok (es : list Element) : bool :=
+  match es with
+  | [] => true
+  | [_] => true
+  | e1 :: ((e2 :: _) as rest) =>
+      negb (sym_eqb (element_last e1) (element_first e2)) && adjacent_boundaries_ok rest
+  end.
+
+Fixpoint extract_adjacent_pairs (l : list Element) : list (Element * Element) :=
+  match l with
+  | [] => []
+  | [_] => []
+  | x :: ((y :: _) as rest) => (x, y) :: extract_adjacent_pairs rest
+  end.
+
+Definition all_decay_adjacent_pairs : list (Element * Element) :=
+  flat_map (fun e => extract_adjacent_pairs (element_decays_to e)) all_elements.
+
+Definition is_decay_pair (p : Element * Element) : bool :=
+  existsb (fun q => element_eqb (fst p) (fst q) && element_eqb (snd p) (snd q))
+          all_decay_adjacent_pairs.
+
+Definition all_pairs_are_decay_pairs (es : list Element) : bool :=
+  forallb is_decay_pair (extract_adjacent_pairs es).
+
 Definition is_element_concatenation (w : Word) : Prop :=
-  exists es : list Element, w = elements_to_word es.
+  exists es : list Element,
+    w = elements_to_word es /\
+    adjacent_boundaries_ok es = true.
 
 Lemma element_concat_nil : is_element_concatenation [].
 Proof.
   exists [].
-  reflexivity.
+  repeat split; reflexivity.
 Qed.
 
 Lemma element_concat_single : forall e,
@@ -1612,10 +1651,11 @@ Lemma element_concat_single : forall e,
 Proof.
   intros e.
   exists [e].
-  unfold elements_to_word.
-  simpl.
-  rewrite app_nil_r.
-  reflexivity.
+  repeat split.
+  - unfold elements_to_word.
+    simpl.
+    rewrite app_nil_r.
+    reflexivity.
 Qed.
 
 Lemma elements_to_word_app_aux : forall es1 es2,
@@ -1632,16 +1672,56 @@ Proof.
     reflexivity.
 Qed.
 
-Lemma element_concat_app : forall w1 w2,
-  is_element_concatenation w1 ->
-  is_element_concatenation w2 ->
-  is_element_concatenation (w1 ++ w2).
+Lemma adjacent_boundaries_ok_app_aux : forall es1 es2,
+  adjacent_boundaries_ok es1 = true ->
+  adjacent_boundaries_ok es2 = true ->
+  es1 <> [] -> es2 <> [] ->
+  negb (sym_eqb (element_last (last es1 H)) (element_first (hd H es2))) = true ->
+  adjacent_boundaries_ok (es1 ++ es2) = true.
 Proof.
-  intros w1 w2 [es1 H1] [es2 H2].
-  exists (es1 ++ es2).
-  subst.
-  symmetry.
-  apply elements_to_word_app_aux.
+  intros es1.
+  induction es1 as [|e1 rest1 IH].
+  - intros es2 _ _ Hne1 _ _.
+    exfalso.
+    apply Hne1.
+    reflexivity.
+  - intros es2 Hadj1 Hadj2 _ Hne2 Hcross.
+    destruct rest1 as [|e1' rest1'].
+    + simpl.
+      destruct es2 as [|e2 rest2].
+      * exfalso. apply Hne2. reflexivity.
+      * simpl.
+        simpl in Hcross.
+        rewrite Hcross.
+        simpl.
+        exact Hadj2.
+    + simpl.
+      simpl in Hadj1.
+      apply andb_true_iff in Hadj1.
+      destruct Hadj1 as [Hbnd Hrest1].
+      rewrite Hbnd.
+      simpl.
+      apply IH.
+      * exact Hrest1.
+      * exact Hadj2.
+      * discriminate.
+      * exact Hne2.
+      * simpl in Hcross.
+        exact Hcross.
+Qed.
+
+Lemma decay_adjacent_boundaries_ok_early : forall e,
+  adjacent_boundaries_ok (element_decays_to e) = true.
+Proof.
+  intros e.
+  destruct e; vm_compute; reflexivity.
+Qed.
+
+Lemma decay_products_have_decay_pairs_early : forall e,
+  all_pairs_are_decay_pairs (element_decays_to e) = true.
+Proof.
+  intros e.
+  destruct e; vm_compute; reflexivity.
 Qed.
 
 Lemma audioactive_element_produces_elements : forall e,
@@ -1650,7 +1730,9 @@ Proof.
   intros e.
   rewrite decay_correctness.
   exists (element_decays_to e).
-  reflexivity.
+  split.
+  - reflexivity.
+  - apply decay_adjacent_boundaries_ok_early.
 Qed.
 
 Lemma elements_to_word_app : forall es1 es2,
@@ -1680,6 +1762,31 @@ Definition first_symbol (w : Word) : option Sym :=
   | x :: _ => Some x
   end.
 
+Lemma last_sym_last_symbol : forall w, last_sym w = last_symbol w.
+Proof.
+  intros w.
+  unfold last_symbol.
+  induction w as [|x xs IH].
+  - reflexivity.
+  - simpl.
+    destruct xs as [|y ys].
+    + reflexivity.
+    + rewrite IH.
+      unfold last_symbol.
+      simpl.
+      destruct (rev ys ++ [y]) eqn:Hrev.
+      * apply app_eq_nil in Hrev.
+        destruct Hrev as [_ Hcons].
+        discriminate.
+      * reflexivity.
+Qed.
+
+Lemma first_sym_first_symbol : forall w, first_sym w = first_symbol w.
+Proof.
+  intros w.
+  destruct w; reflexivity.
+Qed.
+
 Definition boundaries_differ (w1 w2 : Word) : Prop :=
   match last_symbol w1, first_symbol w2 with
   | Some a, Some b => a <> b
@@ -1699,18 +1806,6 @@ Proof.
   intros e.
   destruct e; vm_compute; discriminate.
 Qed.
-
-Definition element_last (e : Element) : Sym :=
-  match last_symbol (element_to_word e) with
-  | Some s => s
-  | None => S1
-  end.
-
-Definition element_first (e : Element) : Sym :=
-  match first_symbol (element_to_word e) with
-  | Some s => s
-  | None => S1
-  end.
 
 Lemma element_last_correct : forall e,
   last_symbol (element_to_word e) = Some (element_last e).
@@ -2124,13 +2219,13 @@ Proof.
   - destruct e; discriminate.
   - exact Hne.
   - unfold boundaries_differ.
-    rewrite element_last_correct.
+    rewrite <- last_sym_last_symbol.
+    unfold element_last in Hbdiff.
     destruct w as [|y ys]; [contradiction|].
     simpl.
-    unfold element_last in Hbdiff.
-    rewrite element_last_correct in Hbdiff.
-    simpl in Hbdiff.
-    exact Hbdiff.
+    destruct (last_sym (element_to_word e)) as [s|] eqn:Hls.
+    + exact Hbdiff.
+    + destruct e; vm_compute in Hls; discriminate.
 Qed.
 
 Lemma elements_first_symbol : forall e rest,
@@ -2147,14 +2242,6 @@ Proof.
     rewrite Heq.
     reflexivity.
 Qed.
-
-Fixpoint adjacent_boundaries_ok (es : list Element) : bool :=
-  match es with
-  | [] => true
-  | [_] => true
-  | e1 :: ((e2 :: _) as rest) =>
-      negb (sym_eqb (element_last e1) (element_first e2)) && adjacent_boundaries_ok rest
-  end.
 
 Lemma decay_adjacent_boundaries_ok : forall e,
   adjacent_boundaries_ok (element_decays_to e) = true.
@@ -2337,23 +2424,6 @@ Proof.
         exact Hcross.
 Qed.
 
-Fixpoint extract_adjacent_pairs (l : list Element) : list (Element * Element) :=
-  match l with
-  | [] => []
-  | [_] => []
-  | x :: ((y :: _) as rest) => (x, y) :: extract_adjacent_pairs rest
-  end.
-
-Definition all_decay_adjacent_pairs : list (Element * Element) :=
-  flat_map (fun e => extract_adjacent_pairs (element_decays_to e)) all_elements.
-
-Definition is_decay_pair (p : Element * Element) : bool :=
-  existsb (fun q => element_eqb (fst p) (fst q) && element_eqb (snd p) (snd q))
-          all_decay_adjacent_pairs.
-
-Definition all_pairs_are_decay_pairs (es : list Element) : bool :=
-  forallb is_decay_pair (extract_adjacent_pairs es).
-
 Lemma decay_products_have_decay_pairs : forall e,
   all_pairs_are_decay_pairs (element_decays_to e) = true.
 Proof.
@@ -2370,23 +2440,20 @@ Proof.
   destruct e1, e2; vm_compute in Hdp |- *; try reflexivity; discriminate.
 Qed.
 
-Lemma flat_map_decay_boundaries_for_decay_seqs : forall es,
+Lemma flat_map_decay_adjacent_boundaries_ok : forall es,
   all_pairs_are_decay_pairs es = true ->
   adjacent_boundaries_ok es = true ->
-  all_pairs_are_decay_pairs (flat_map element_decays_to es) = true /\
   adjacent_boundaries_ok (flat_map element_decays_to es) = true.
 Proof.
   intros es.
   induction es as [|e rest IH].
   - intros _ _.
-    split; reflexivity.
+    reflexivity.
   - intros Hdp Hadj.
     destruct rest as [|e2 rest'].
     + simpl.
       rewrite app_nil_r.
-      split.
-      * apply decay_products_have_decay_pairs.
-      * apply decay_adjacent_boundaries_ok.
+      apply decay_adjacent_boundaries_ok.
     + assert (Hrest_dp : all_pairs_are_decay_pairs (e2 :: rest') = true).
       { unfold all_pairs_are_decay_pairs in Hdp |- *.
         simpl in Hdp.
@@ -2403,19 +2470,28 @@ Proof.
         destruct Hdp as [Hp _].
         exact Hp. }
       specialize (IH Hrest_dp Hrest_adj).
-      destruct IH as [IHdp IHadj].
       simpl.
-      split.
-      * admit.
-      * apply adjacent_boundaries_ok_app.
-        -- apply decay_adjacent_boundaries_ok.
-        -- exact IHadj.
-        -- apply element_decays_nonempty.
-        -- intro Hcontra.
-           destruct (element_decays_to e2) as [|x xs] eqn:He2d.
-           ++ pose proof (element_decays_nonempty e2) as Hne. contradiction.
-           ++ simpl in Hcontra. discriminate.
-        -- destruct e, e2; vm_compute in Hpair |- *; try reflexivity; discriminate.
+      apply adjacent_boundaries_ok_app.
+      * apply decay_adjacent_boundaries_ok.
+      * exact IH.
+      * apply element_decays_nonempty.
+      * intro Hcontra.
+        destruct (element_decays_to e2) as [|x xs] eqn:He2d.
+        -- pose proof (element_decays_nonempty e2) as Hne. contradiction.
+        -- simpl in Hcontra. discriminate.
+      * destruct e, e2; vm_compute in Hpair |- *; try reflexivity; discriminate.
+Qed.
+
+Lemma flat_map_decay_boundaries_for_decay_seqs : forall es,
+  all_pairs_are_decay_pairs es = true ->
+  adjacent_boundaries_ok es = true ->
+  all_pairs_are_decay_pairs (flat_map element_decays_to es) = true /\
+  adjacent_boundaries_ok (flat_map element_decays_to es) = true.
+Proof.
+  intros es Hdp Hadj.
+  split.
+  - admit.
+  - apply flat_map_decay_adjacent_boundaries_ok; assumption.
 Admitted.
 
 Definition is_decay_element_sequence (es : list Element) : Prop :=
@@ -2440,28 +2516,34 @@ Proof.
   split.
   - apply audioactive_elements_concat.
     exact Hadj.
-  - assert (Hdp : all_pairs_are_decay_pairs es = true) by admit.
-    pose proof (flat_map_decay_boundaries_for_decay_seqs es Hdp Hadj) as [_ Hres].
-    exact Hres.
+  - destruct es as [|e rest].
+    + reflexivity.
+    + assert (Hdp : all_pairs_are_decay_pairs (e :: rest) = true) by admit.
+      apply flat_map_decay_adjacent_boundaries_ok; assumption.
 Admitted.
 
 Theorem element_concatenation_closed : forall w,
   is_element_concatenation w ->
   is_element_concatenation (audioactive w).
 Proof.
-  intros w [es Hes].
+  intros w [es [Hes Hadj]].
   subst.
   destruct es as [|e rest].
   - exists [].
-    reflexivity.
+    split; reflexivity.
   - destruct rest as [|e2 rest'].
     + exists (element_decays_to e).
-      simpl.
-      rewrite app_nil_r.
-      apply decay_correctness.
+      split.
+      * simpl.
+        rewrite app_nil_r.
+        apply decay_correctness.
+      * apply decay_adjacent_boundaries_ok.
     + exists (flat_map element_decays_to (e :: e2 :: rest')).
-      apply audioactive_elements_concat.
-      admit.
+      split.
+      * apply audioactive_elements_concat.
+        exact Hadj.
+      * assert (Hdp : all_pairs_are_decay_pairs (e :: e2 :: rest') = true) by admit.
+        apply flat_map_decay_adjacent_boundaries_ok; assumption.
 Admitted.
 
 Definition max_element_length : nat :=
@@ -2516,8 +2598,50 @@ Proof.
     + unfold find_split_point in Hatom.
       destruct (find_split_point_aux (x :: y :: ys) (length (x :: y :: ys) - 1) splitting_depth_bound) eqn:Hfind.
       * discriminate.
-      * admit.
-Admitted.
+      * assert (Hlen1 : length w1 >= 1).
+        { destruct w1; [contradiction | simpl; lia]. }
+        assert (Hlen2 : length w2 >= 1).
+        { destruct w2; [contradiction | simpl; lia]. }
+        assert (Hlensum : length w1 + length w2 = length (x :: y :: ys)).
+        { rewrite Hsplit. rewrite app_length. reflexivity. }
+        assert (Hbound : length w1 <= length (x :: y :: ys) - 1).
+        { simpl in Hlensum. simpl. lia. }
+        assert (Hfirstn : firstn (length w1) (x :: y :: ys) = w1).
+        { rewrite Hsplit.
+          clear.
+          induction w1 as [|a w1' IH].
+          - reflexivity.
+          - simpl. f_equal. apply IH. }
+        assert (Hskipn : skipn (length w1) (x :: y :: ys) = w2).
+        { rewrite Hsplit.
+          clear.
+          induction w1 as [|a w1' IH].
+          - reflexivity.
+          - simpl. apply IH. }
+        assert (Hvalid : valid_split_at (x :: y :: ys) (length w1) splitting_depth_bound = true).
+        { unfold valid_split_at.
+          rewrite Hfirstn. rewrite Hskipn.
+          destruct w1; [contradiction|].
+          destruct w2; [contradiction|].
+          exact Hni. }
+        assert (Hfound : exists k, find_split_point_aux (x :: y :: ys) (length (x :: y :: ys) - 1) splitting_depth_bound = Some k).
+        { clear Hfind.
+          assert (Hsearch : forall m, m >= length w1 -> m <= length (x :: y :: ys) - 1 ->
+            exists k, find_split_point_aux (x :: y :: ys) m splitting_depth_bound = Some k).
+          { induction m as [|m' IHm].
+            - intros Hge _. lia.
+            - intros Hge Hle.
+              simpl.
+              destruct (valid_split_at (x :: y :: ys) (Datatypes.S m') splitting_depth_bound) eqn:Hcheck.
+              + exists (Datatypes.S m'). reflexivity.
+              + destruct (Nat.eq_dec (Datatypes.S m') (length w1)) as [Heq' | Hneq].
+                * rewrite Heq' in Hcheck. rewrite Hvalid in Hcheck. discriminate.
+                * apply IHm; lia. }
+          apply Hsearch; lia. }
+        destruct Hfound as [k Hcontra].
+        rewrite Hfind in Hcontra.
+        discriminate.
+Qed.
 
 Theorem atoms_are_elements :
   forall w : Word,
