@@ -1,0 +1,9 @@
+# Coq compilation artifacts
+*.vo
+*.vok
+*.vos
+*.glob
+*.aux
+*.v.d
+.*.aux
+.coq-native/

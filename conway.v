@@ -327,6 +327,10 @@ Inductive Element : Type :=
   | Tl | Pb | Bi | Po | At | Rn | Fr | Ra | Ac | Th
   | Pa | U.
 
+Inductive TransuranicElement : Type :=
+  | Np : TransuranicElement
+  | Pu : TransuranicElement.
+
 Definition element_to_word (e : Element) : Word :=
   match e with
   | H => [S2; S2]
@@ -421,6 +425,12 @@ Definition element_to_word (e : Element) : Word :=
   | Th => [S1; S1; S1; S3]
   | Pa => [S1; S3]
   | U => [S3]
+  end.
+
+Definition transuranic_to_word (t : TransuranicElement) : Word :=
+  match t with
+  | Np => [Sd; Sd]
+  | Pu => [Sd]
   end.
 
 Definition element_decays_to (e : Element) : list Element :=
@@ -518,6 +528,12 @@ Definition element_decays_to (e : Element) : list Element :=
   | Pa => [Th]
   | U => [Pa]
   end.
+
+Lemma audioactive_Pu : audioactive (transuranic_to_word Pu) = [S1; Sd].
+Proof. reflexivity. Qed.
+
+Lemma audioactive_Np : audioactive (transuranic_to_word Np) = [S2; Sd].
+Proof. reflexivity. Qed.
 
 Theorem hydrogen_stable : audioactive (element_to_word H) = element_to_word H.
 Proof.
@@ -1341,6 +1357,13 @@ Proof.
   destruct e; vm_compute; reflexivity.
 Qed.
 
+Theorem transuranics_are_atoms : forall t : TransuranicElement,
+  is_atom_b (transuranic_to_word t) atomicity_depth = true.
+Proof.
+  intros t.
+  destruct t; vm_compute; reflexivity.
+Qed.
+
 Theorem decay_produces_elements : forall e : Element,
   forall e' : Element, List.In e' (element_decays_to e) ->
   element_to_word e' <> [].
@@ -1384,6 +1407,11 @@ Definition all_elements : list Element :=
 Lemma all_elements_count : length all_elements = 92.
 Proof. reflexivity. Qed.
 
+Definition all_transuranics : list TransuranicElement := [Np; Pu].
+
+Lemma all_transuranics_count : length all_transuranics = 2.
+Proof. reflexivity. Qed.
+
 Definition element_eqb (e1 e2 : Element) : bool :=
   match e1, e2 with
   | H, H => true | He, He => true | Li, Li => true | Be, Be => true
@@ -1424,6 +1452,26 @@ Proof.
   - destruct e1, e2; simpl; intros H0; try reflexivity; discriminate.
   - intros ->.
     apply element_eqb_refl.
+Qed.
+
+Definition transuranic_eqb (t1 t2 : TransuranicElement) : bool :=
+  match t1, t2 with
+  | Np, Np => true
+  | Pu, Pu => true
+  | _, _ => false
+  end.
+
+Lemma transuranic_eqb_refl : forall t, transuranic_eqb t t = true.
+Proof. destruct t; reflexivity. Qed.
+
+Lemma transuranic_eqb_eq : forall t1 t2,
+  transuranic_eqb t1 t2 = true <-> t1 = t2.
+Proof.
+  intros t1 t2.
+  split.
+  - destruct t1, t2; simpl; intros H; try reflexivity; discriminate.
+  - intros ->.
+    apply transuranic_eqb_refl.
 Qed.
 
 Fixpoint element_in_list (e : Element) (l : list Element) : bool :=
@@ -2873,6 +2921,59 @@ Definition degree_71_coefficients : list Z :=
 Lemma degree_71_poly_length : length degree_71_coefficients = 72.
 Proof. reflexivity. Qed.
 
+Definition word_contains_Sd (w : Word) : bool :=
+  existsb (fun s => match s with Sd => true | _ => false end) w.
+
+Lemma common_elements_no_Sd : forall e : Element,
+  word_contains_Sd (element_to_word e) = false.
+Proof.
+  intros e.
+  destruct e; vm_compute; reflexivity.
+Qed.
+
+Lemma transuranics_have_Sd : forall t : TransuranicElement,
+  word_contains_Sd (transuranic_to_word t) = true.
+Proof.
+  intros t.
+  destruct t; vm_compute; reflexivity.
+Qed.
+
+Lemma elements_to_word_no_Sd : forall es : list Element,
+  word_contains_Sd (elements_to_word es) = false.
+Proof.
+  induction es as [|e rest IH].
+  - reflexivity.
+  - simpl.
+    unfold word_contains_Sd in *.
+    rewrite existsb_app.
+    rewrite common_elements_no_Sd.
+    simpl.
+    exact IH.
+Qed.
+
+Lemma audioactive_element_no_Sd : forall e : Element,
+  word_contains_Sd (audioactive (element_to_word e)) = false.
+Proof.
+  intros e.
+  rewrite decay_correctness.
+  apply elements_to_word_no_Sd.
+Qed.
+
+Theorem common_transuranic_separation :
+  forall e : Element, forall t : TransuranicElement,
+    element_to_word e <> transuranic_to_word t.
+Proof.
+  intros e t.
+  destruct e, t; vm_compute; discriminate.
+Qed.
+
+Theorem full_element_count :
+  length all_elements = 92 /\
+  length all_transuranics = 2.
+Proof.
+  split; reflexivity.
+Qed.
+
 Theorem conway_cosmological_theorem :
   (length all_elements = 92) /\
   (forall e : Element, is_atom_b (element_to_word e) atomicity_depth = true) /\
@@ -3071,6 +3172,62 @@ Lemma iterate_decay_S : forall n es,
   iterate_decay (Datatypes.S n) es = iterate_decay n (flat_map element_decays_to es).
 Proof. reflexivity. Qed.
 
+Lemma iterate_decay_no_Sd : forall n e,
+  word_contains_Sd (elements_to_word (iterate_decay n [e])) = false.
+Proof.
+  intros n e.
+  apply elements_to_word_no_Sd.
+Qed.
+
+Lemma iterate_audio_1_element_no_Sd : forall e,
+  word_contains_Sd (iterate_audio 1 (element_to_word e)) = false.
+Proof.
+  intros e.
+  simpl.
+  apply audioactive_element_no_Sd.
+Qed.
+
+Lemma iterate_audio_element_no_Sd_bounded : forall n e,
+  n <= 5 ->
+  word_contains_Sd (iterate_audio n (element_to_word e)) = false.
+Proof.
+  intros n e Hle.
+  destruct n as [|[|[|[|[|[|n']]]]]].
+  - simpl. apply common_elements_no_Sd.
+  - apply iterate_audio_1_element_no_Sd.
+  - destruct e; vm_compute; reflexivity.
+  - destruct e; vm_compute; reflexivity.
+  - destruct e; vm_compute; reflexivity.
+  - destruct e; vm_compute; reflexivity.
+  - lia.
+Qed.
+
+Lemma iterate_audio_iterate_decay_connection_bounded : forall n e,
+  n <= 6 ->
+  iterate_audio n (element_to_word e) = elements_to_word (iterate_decay n [e]).
+Proof.
+  intros n e Hle.
+  destruct n as [|[|[|[|[|[|[|n']]]]]]].
+  - simpl. rewrite app_nil_r. reflexivity.
+  - destruct e; vm_compute; reflexivity.
+  - destruct e; vm_compute; reflexivity.
+  - destruct e; vm_compute; reflexivity.
+  - destruct e; vm_compute; reflexivity.
+  - destruct e; vm_compute; reflexivity.
+  - destruct e; vm_compute; reflexivity.
+  - lia.
+Qed.
+
+Lemma iterate_audio_element_no_Sd_6 : forall n e,
+  n <= 6 ->
+  word_contains_Sd (iterate_audio n (element_to_word e)) = false.
+Proof.
+  intros n e Hle.
+  rewrite iterate_audio_iterate_decay_connection_bounded.
+  - apply iterate_decay_no_Sd.
+  - exact Hle.
+Qed.
+
 Lemma iterate_decay_single_adj_bounds_0 : forall e,
   adjacent_boundaries_ok (iterate_decay 0 [e]) = true.
 Proof. intros e. reflexivity. Qed.
@@ -3210,3 +3367,26 @@ Proof.
   - reflexivity.
 Qed.
 
+Theorem transuranic_extension_properties :
+  (length all_elements = 92) /\
+  (length all_transuranics = 2) /\
+  (forall e : Element, is_atom_b (element_to_word e) atomicity_depth = true) /\
+  (forall t : TransuranicElement, is_atom_b (transuranic_to_word t) atomicity_depth = true) /\
+  (forall e : Element, audioactive (element_to_word e) = elements_to_word (element_decays_to e)) /\
+  (forall e e' : Element, List.In e' (element_decays_to e) -> List.In e' all_elements) /\
+  (audioactive (element_to_word H) = element_to_word H) /\
+  (forall e : Element, word_contains_Sd (element_to_word e) = false) /\
+  (forall t : TransuranicElement, word_contains_Sd (transuranic_to_word t) = true) /\
+  (forall e : Element, forall t : TransuranicElement, element_to_word e <> transuranic_to_word t).
+Proof.
+  split; [reflexivity|].
+  split; [reflexivity|].
+  split; [exact all_elements_atomic|].
+  split; [exact transuranics_are_atoms|].
+  split; [exact decay_correctness|].
+  split; [intros e e' Hin; apply decay_products_closed with e; exact Hin|].
+  split; [reflexivity|].
+  split; [exact common_elements_no_Sd|].
+  split; [exact transuranics_have_Sd|].
+  exact common_transuranic_separation.
+Qed.
