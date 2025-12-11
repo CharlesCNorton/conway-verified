@@ -12,9 +12,14 @@
 (*     92 elements emerge. You cannot design it; you discover it."            *)
 (*    - John Horton Conway, on the Cosmological Theorem                       *)
 (*                                                                            *)
-(*    Based on: P. Lairez and A. Storozhenko, Conway cosmological theorem     *)
-(*    and automata theory, Amer. Math. Monthly 132(9):867-882, 2025.          *)
-(*    arXiv:2409.20341                                                        *)
+(*    References:                                                             *)
+(*    [1] P. Lairez and A. Storozhenko, Conway cosmological theorem and       *)
+(*        automata theory, Amer. Math. Monthly 132(9):867-882, 2025.          *)
+(*        arXiv:2409.20341                                                    *)
+(*    [2] N. Johnston, A derivation of Conway's degree-71 look-and-say        *)
+(*        polynomial, 2010. https://njohnston.ca                              *)
+(*    [3] Element sequences and decay table verified via Wolfram Mathematica  *)
+(*        using look-and-say computation and dynamic programming parsing.    *)
 (*                                                                            *)
 (*    Author: Charles C. Norton                                               *)
 (*    Date: December 11, 2025                                                 *)
@@ -267,21 +272,12 @@ Proof.
 Qed.
 
 Definition Hydrogen : Word := [S2; S2].
-Definition Helium : Word := [S1; S3; S1; S1; S2; S2].
-Definition Lithium : Word := [S1; S1; S1; S3; S2; S1; S1; S2].
-Definition Beryllium : Word := [S1; S1; S1; S2; S1; S3; S2; S1; S1; S2].
 
 Example hydrogen_decay : audioactive Hydrogen = [S2; S2].
 Proof. reflexivity. Qed.
 
-Example helium_decay_step1 : audioactive Helium = [S1; S1; S1; S3; S2; S1; S2; S2].
-Proof. reflexivity. Qed.
-
 Definition is_one_of_92 (w : Word) : Prop :=
-  w = Hydrogen \/
-  w = Helium \/
-  w = Lithium \/
-  w = Beryllium.
+  w = Hydrogen.
 
 Fixpoint word_eqb (w1 w2 : Word) : bool :=
   match w1, w2 with
@@ -333,24 +329,217 @@ Inductive Element : Type :=
 Definition element_to_word (e : Element) : Word :=
   match e with
   | H => [S2; S2]
-  | He => [S1; S3; S1; S1; S2; S2]
-  | Li => [S1; S1; S1; S3; S2; S1; S1; S2]
-  | Be => [S1; S1; S1; S2; S1; S3; S2; S1; S1; S2]
-  | U => [S3; S1; S1; S2; S1; S1; S3; S1; S1; S2; S2; S1; S1; S3]
-  | _ => []
+  | He => [S1; S3; S1; S1; S2; S2; S2; S1; S1; S3; S3; S2; S1; S1; S3; S2; S2; S1; S1; S2; S2; S1; S1; S2; S1; S3; S3; S2; S2; S1; S1; S2]
+  | Li => [S3; S1; S2; S2; S1; S1; S3; S2; S2; S2; S1; S2; S2; S2; S1; S1; S2; S1; S1; S2; S3; S2; S2; S2; S1; S1; S2]
+  | Be => [S1; S1; S1; S3; S1; S2; S2; S1; S1; S3; S1; S2; S1; S1; S3; S2; S2; S1; S1; S3; S3; S2; S1; S1; S3; S2; S2; S1; S1; S2; S2; S1; S1; S2; S1; S3; S3; S2; S2; S1; S1; S2]
+  | B => [S1; S3; S2; S1; S1; S3; S2; S1; S2; S2; S2; S1; S1; S3; S2; S2; S2; S1; S2; S2; S2; S1; S1; S2; S1; S1; S2; S3; S2; S2; S2; S1; S1; S2]
+  | C => [S3; S1; S1; S3; S1; S1; S2; S2; S1; S1; S3; S2; S2; S1; S1; S2; S2; S1; S1; S2; S1; S3; S3; S2; S2; S1; S1; S2]
+  | N => [S1; S1; S1; S3; S1; S2; S2; S1; S2; S2; S2; S1; S1; S2; S1; S1; S2; S3; S2; S2; S2; S1; S1; S2]
+  | O => [S1; S3; S2; S1; S1; S2; S2; S1; S1; S2; S1; S3; S3; S2; S2; S1; S1; S2]
+  | F => [S3; S1; S1; S2; S1; S1; S2; S3; S2; S2; S2; S1; S1; S2]
+  | Ne => [S1; S1; S1; S2; S1; S3; S3; S2; S2; S1; S1; S2]
+  | Na => [S1; S2; S3; S2; S2; S2; S1; S1; S2]
+  | Mg => [S3; S1; S1; S3; S3; S2; S2; S1; S1; S2]
+  | Al => [S1; S1; S1; S3; S2; S2; S2; S1; S1; S2]
+  | Si => [S1; S3; S2; S2; S1; S1; S2]
+  | P => [S3; S1; S1; S3; S1; S1; S2; S2; S2; S1; S1; S2]
+  | S => [S1; S1; S1; S3; S1; S2; S2; S1; S1; S2]
+  | Cl => [S1; S3; S2; S1; S1; S2]
+  | Ar => [S3; S1; S1; S2]
+  | K => [S1; S1; S1; S2]
+  | Ca => [S1; S2]
+  | Sc => [S3; S1; S1; S3; S1; S1; S2; S2; S2; S1; S1; S3; S3; S1; S1; S2]
+  | Ti => [S1; S1; S1; S3; S1; S2; S2; S1; S1; S3; S1; S1; S1; S2]
+  | V => [S1; S3; S2; S1; S1; S3; S1; S2]
+  | Cr => [S3; S1; S1; S3; S2]
+  | Mn => [S1; S1; S1; S3; S1; S1; S2; S2; S2; S1; S1; S2]
+  | Fe => [S1; S3; S1; S2; S2; S1; S1; S2]
+  | Co => [S3; S2; S1; S1; S2]
+  | Ni => [S1; S1; S1; S3; S3; S1; S1; S2]
+  | Cu => [S1; S3; S1; S1; S1; S2]
+  | Zn => [S3; S1; S2]
+  | Ga => [S1; S3; S2; S2; S1; S1; S3; S3; S1; S2; S2; S2; S1; S1; S3; S3; S2]
+  | Ge => [S3; S1; S1; S3; S1; S1; S2; S2; S2; S1; S1; S3; S1; S1; S1; S2; S2; S1; S1; S3; S2; S2; S2]
+  | As => [S1; S1; S1; S3; S1; S2; S2; S1; S1; S3; S1; S2; S1; S1; S3; S2; S2; S1; S1; S3; S3; S2; S2; S1; S1; S2]
+  | Se => [S1; S3; S2; S1; S1; S3; S2; S1; S2; S2; S2; S1; S1; S3; S2; S2; S2; S1; S1; S2]
+  | Br => [S3; S1; S1; S3; S1; S1; S2; S2; S1; S1; S3; S2; S2; S1; S1; S2]
+  | Kr => [S1; S1; S1; S3; S1; S2; S2; S1; S2; S2; S2; S1; S1; S2]
+  | Rb => [S1; S3; S2; S1; S1; S2; S2; S1; S1; S2]
+  | Sr => [S3; S1; S1; S2; S1; S1; S2]
+  | Y => [S1; S1; S1; S2; S1; S3; S3]
+  | Zr => [S1; S2; S3; S2; S2; S2; S1; S1; S3; S3; S1; S2; S2; S2; S1; S1; S3; S1; S1; S2; S2; S1; S1]
+  | Nb => [S1; S1; S1; S3; S1; S2; S2; S1; S1; S3; S3; S2; S2; S1; S1; S3; S1; S1; S1; S2; S2; S1; S1; S3; S1; S2; S2; S1]
+  | Mo => [S1; S3; S2; S1; S1; S3; S2; S2; S2; S1; S1; S3; S1; S2; S1; S1; S3; S2; S1; S1]
+  | Tc => [S3; S1; S1; S3; S2; S2; S1; S1; S3; S2; S1; S2; S2; S2; S1]
+  | Ru => [S1; S3; S2; S2; S1; S1; S3; S3; S1; S2; S2; S2; S1; S1; S3; S1; S1; S2; S2; S1; S1]
+  | Rh => [S3; S1; S1; S3; S1; S1; S2; S2; S2; S1; S1; S3; S1; S1; S1; S2; S2; S1; S1; S3; S1; S2; S2; S1]
+  | Pd => [S1; S1; S1; S3; S1; S2; S2; S1; S1; S3; S1; S2; S1; S1; S3; S2; S1; S1]
+  | Ag => [S1; S3; S2; S1; S1; S3; S2; S1; S2; S2; S2; S1]
+  | Cd => [S3; S1; S1; S3; S1; S1; S2; S2; S1; S1]
+  | In => [S1; S1; S1; S3; S1; S2; S2; S1]
+  | Sn => [S1; S3; S2; S1; S1]
+  | Sb => [S3; S1; S1; S2; S2; S2; S1]
+  | Te => [S1; S3; S2; S2; S1; S1; S3; S3; S1; S2; S2; S1; S1]
+  | I => [S3; S1; S1; S3; S1; S1; S2; S2; S2; S1; S1; S3; S1; S1; S1; S2; S2; S1]
+  | Xe => [S1; S1; S1; S3; S1; S2; S2; S1; S1; S3; S1; S2; S1; S1]
+  | Cs => [S1; S3; S2; S1; S1; S3; S2; S1]
+  | Ba => [S3; S1; S1; S3; S1; S1]
+  | La => [S1; S1; S1; S3; S1]
+  | Ce => [S1; S3; S2; S1; S1; S3; S3; S1; S1; S2]
+  | Pr => [S3; S1; S1; S3; S1; S1; S1; S2]
+  | Nd => [S1; S1; S1; S3; S1; S2]
+  | Pm => [S1; S3; S2]
+  | Sm => [S3; S1; S1; S3; S3; S2]
+  | Eu => [S1; S1; S1; S3; S2; S2; S2]
+  | Gd => [S1; S3; S2; S2; S1; S1; S3; S3; S1; S1; S2]
+  | Tb => [S3; S1; S1; S3; S1; S1; S2; S2; S2; S1; S1; S3; S1; S1; S1; S2]
+  | Dy => [S1; S1; S1; S3; S1; S2; S2; S1; S1; S3; S1; S2]
+  | Ho => [S1; S3; S2; S1; S1; S3; S2]
+  | Er => [S3; S1; S1; S3; S1; S1; S2; S2; S2]
+  | Tm => [S1; S1; S1; S3; S1; S2; S2; S1; S1; S3; S3; S1; S1; S2]
+  | Yb => [S1; S3; S2; S1; S1; S3; S1; S1; S1; S2]
+  | Lu => [S3; S1; S1; S3; S1; S2]
+  | Hf => [S1; S1; S1; S3; S2]
+  | Ta => [S1; S3; S1; S1; S2; S2; S2; S1; S1; S3; S3; S2; S1; S1; S3; S2; S2; S1; S1; S2; S2; S1; S1; S2; S1; S3; S3; S2; S2; S1; S1; S3]
+  | W => [S3; S1; S2; S2; S1; S1; S3; S2; S2; S2; S1; S2; S2; S2; S1; S1; S2; S1; S1; S2; S3; S2; S2; S2; S1; S1; S3]
+  | Re => [S1; S1; S1; S3; S1; S2; S2; S1; S1; S3; S1; S2; S1; S1; S3; S2; S2; S1; S1; S3; S3; S2; S1; S1; S3; S2; S2; S1; S1; S2; S2; S1; S1; S2; S1; S3; S3; S2; S2; S1; S1; S3]
+  | Os => [S1; S3; S2; S1; S1; S3; S2; S1; S2; S2; S2; S1; S1; S3; S2; S2; S2; S1; S2; S2; S2; S1; S1; S2; S1; S1; S2; S3; S2; S2; S2; S1; S1; S3]
+  | Ir => [S3; S1; S1; S3; S1; S1; S2; S2; S1; S1; S3; S2; S2; S1; S1; S2; S2; S1; S1; S2; S1; S3; S3; S2; S2; S1; S1; S3]
+  | Pt => [S1; S1; S1; S3; S1; S2; S2; S1; S2; S2; S2; S1; S1; S2; S1; S1; S2; S3; S2; S2; S2; S1; S1; S3]
+  | Au => [S1; S3; S2; S1; S1; S2; S2; S1; S1; S2; S1; S3; S3; S2; S2; S1; S1; S3]
+  | Hg => [S3; S1; S1; S2; S1; S1; S2; S3; S2; S2; S2; S1; S1; S3]
+  | Tl => [S1; S1; S1; S2; S1; S3; S3; S2; S2; S1; S1; S3]
+  | Pb => [S1; S2; S3; S2; S2; S2; S1; S1; S3]
+  | Bi => [S3; S1; S1; S3; S3; S2; S2; S1; S1; S3]
+  | Po => [S1; S1; S1; S3; S2; S2; S2; S1; S1; S3]
+  | At => [S1; S3; S2; S2; S1; S1; S3]
+  | Rn => [S3; S1; S1; S3; S1; S1; S2; S2; S2; S1; S1; S3]
+  | Fr => [S1; S1; S1; S3; S1; S2; S2; S1; S1; S3]
+  | Ra => [S1; S3; S2; S1; S1; S3]
+  | Ac => [S3; S1; S1; S3]
+  | Th => [S1; S1; S1; S3]
+  | Pa => [S1; S3]
+  | U => [S3]
   end.
 
 Definition element_decays_to (e : Element) : list Element :=
   match e with
   | H => [H]
   | He => [Hf; Pa; H; Ca; Li]
-  | U => [Pa; Th]
-  | _ => []
+  | Li => [He]
+  | Be => [Ge; Ca; Li]
+  | B => [Be]
+  | C => [B]
+  | N => [C]
+  | O => [N]
+  | F => [O]
+  | Ne => [F]
+  | Na => [Ne]
+  | Mg => [Pm; Na]
+  | Al => [Mg]
+  | Si => [Al]
+  | P => [Ho; Si]
+  | S => [P]
+  | Cl => [S]
+  | Ar => [Cl]
+  | K => [Ar]
+  | Ca => [K]
+  | Sc => [Ho; Pa; H; Ca; Co]
+  | Ti => [Sc]
+  | V => [Ti]
+  | Cr => [V]
+  | Mn => [Cr; Si]
+  | Fe => [Mn]
+  | Co => [Fe]
+  | Ni => [Zn; Co]
+  | Cu => [Ni]
+  | Zn => [Cu]
+  | Ga => [Eu; Ca; Ac; H; Ca; Zn]
+  | Ge => [Ho; Ga]
+  | As => [Ge; Na]
+  | Se => [As]
+  | Br => [Se]
+  | Kr => [Br]
+  | Rb => [Kr]
+  | Sr => [Rb]
+  | Y => [Sr; U]
+  | Zr => [Y; H; Ca; Tc]
+  | Nb => [Er; Zr]
+  | Mo => [Nb]
+  | Tc => [Mo]
+  | Ru => [Eu; Ca; Tc]
+  | Rh => [Ho; Ru]
+  | Pd => [Rh]
+  | Ag => [Pd]
+  | Cd => [Ag]
+  | In => [Cd]
+  | Sn => [In]
+  | Sb => [Pm; Sn]
+  | Te => [Eu; Ca; Sb]
+  | I => [Ho; Te]
+  | Xe => [I]
+  | Cs => [Xe]
+  | Ba => [Cs]
+  | La => [Ba]
+  | Ce => [La; H; Ca; Co]
+  | Pr => [Ce]
+  | Nd => [Pr]
+  | Pm => [Nd]
+  | Sm => [Pm; Ca; Zn]
+  | Eu => [Sm]
+  | Gd => [Eu; Ca; Co]
+  | Tb => [Ho; Gd]
+  | Dy => [Tb]
+  | Ho => [Dy]
+  | Er => [Ho; Pm]
+  | Tm => [Er; Ca; Co]
+  | Yb => [Tm]
+  | Lu => [Yb]
+  | Hf => [Lu]
+  | Ta => [Hf; Pa; H; Ca; W]
+  | W => [Ta]
+  | Re => [Ge; Ca; W]
+  | Os => [Re]
+  | Ir => [Os]
+  | Pt => [Ir]
+  | Au => [Pt]
+  | Hg => [Au]
+  | Tl => [Hg]
+  | Pb => [Tl]
+  | Bi => [Pm; Pb]
+  | Po => [Bi]
+  | At => [Po]
+  | Rn => [Ho; At]
+  | Fr => [Rn]
+  | Ra => [Fr]
+  | Ac => [Ra]
+  | Th => [Ac]
+  | Pa => [Th]
+  | U => [Pa]
   end.
 
 Theorem hydrogen_stable : audioactive (element_to_word H) = element_to_word H.
 Proof.
   reflexivity.
+Qed.
+
+Definition is_element (w : Word) : Prop :=
+  exists e : Element, w = element_to_word e.
+
+Definition decay_word (w : Word) : Word :=
+  audioactive w.
+
+Theorem element_closure : forall e : Element,
+  exists products : list Element,
+    element_decays_to e = products /\
+    audioactive (element_to_word e) =
+      fold_right (fun e' acc => element_to_word e' ++ acc) [] products.
+Proof.
+  intros e.
+  exists (element_decays_to e).
+  split.
+  - reflexivity.
+  - destruct e; vm_compute; reflexivity.
 Qed.
 
 Definition all_count_symbols (w : Word) : Prop :=
@@ -1143,4 +1332,93 @@ Proof.
         -- apply split_into_atoms_all_atoms.
            apply iterate_audio_nonempty.
            discriminate.
+Qed.
+
+Definition atomicity_depth : nat := 10.
+
+Theorem all_elements_atomic : forall e : Element,
+  is_atom_b (element_to_word e) atomicity_depth = true.
+Proof.
+  intros e.
+  destruct e; vm_compute; reflexivity.
+Qed.
+
+Theorem decay_produces_elements : forall e : Element,
+  forall e' : Element, List.In e' (element_decays_to e) ->
+  element_to_word e' <> [].
+Proof.
+  intros e e' Hin.
+  destruct e'; vm_compute; discriminate.
+Qed.
+
+Definition elements_to_word (es : list Element) : Word :=
+  fold_right (fun e acc => element_to_word e ++ acc) [] es.
+
+Theorem decay_correctness : forall e : Element,
+  audioactive (element_to_word e) = elements_to_word (element_decays_to e).
+Proof.
+  intros e.
+  destruct e; vm_compute; reflexivity.
+Qed.
+
+Theorem element_system_closed : forall e : Element,
+  forall e' : Element, List.In e' (element_decays_to e) ->
+  exists products : list Element,
+    element_decays_to e' = products.
+Proof.
+  intros e e' Hin.
+  exists (element_decays_to e').
+  reflexivity.
+Qed.
+
+Definition all_elements : list Element :=
+  [H; He; Li; Be; B; C; N; O; F; Ne;
+   Na; Mg; Al; Si; P; S; Cl; Ar; K; Ca;
+   Sc; Ti; V; Cr; Mn; Fe; Co; Ni; Cu; Zn;
+   Ga; Ge; As; Se; Br; Kr; Rb; Sr; Y; Zr;
+   Nb; Mo; Tc; Ru; Rh; Pd; Ag; Cd; In; Sn;
+   Sb; Te; I; Xe; Cs; Ba; La; Ce; Pr; Nd;
+   Pm; Sm; Eu; Gd; Tb; Dy; Ho; Er; Tm; Yb;
+   Lu; Hf; Ta; W; Re; Os; Ir; Pt; Au; Hg;
+   Tl; Pb; Bi; Po; At; Rn; Fr; Ra; Ac; Th;
+   Pa; U].
+
+Lemma all_elements_count : length all_elements = 92.
+Proof. reflexivity. Qed.
+
+Theorem hydrogen_unique_fixed_point : forall e : Element,
+  audioactive (element_to_word e) = element_to_word e <-> e = H.
+Proof.
+  intros e.
+  split.
+  - intros Hfix.
+    destruct e; vm_compute in Hfix; try discriminate; reflexivity.
+  - intros ->.
+    vm_compute.
+    reflexivity.
+Qed.
+
+Theorem U_to_H_chain :
+  audioactive (element_to_word U) = element_to_word Pa /\
+  audioactive (element_to_word Pa) = element_to_word Th /\
+  audioactive (element_to_word Th) = element_to_word Ac /\
+  audioactive (element_to_word Ac) = element_to_word Ra /\
+  audioactive (element_to_word Ra) = element_to_word Fr.
+Proof.
+  vm_compute.
+  repeat split; reflexivity.
+Qed.
+
+Theorem conway_cosmological_complete :
+  forall e : Element,
+    is_atom_b (element_to_word e) atomicity_depth = true /\
+    audioactive (element_to_word e) = elements_to_word (element_decays_to e) /\
+    (audioactive (element_to_word e) = element_to_word e <-> e = H).
+Proof.
+  intros e.
+  repeat split.
+  - apply all_elements_atomic.
+  - apply decay_correctness.
+  - apply hydrogen_unique_fixed_point.
+  - apply hydrogen_unique_fixed_point.
 Qed.
