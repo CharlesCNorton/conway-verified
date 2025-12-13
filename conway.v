@@ -2750,4 +2750,301 @@ Proof.
   - exact iterate_decay_adjacent_ok_15.
 Qed.
 
+(** * Section 31: Unique Parsing (elements_word injectivity on lists) *)
+
+Definition first_element_match (e : Element) (w : list Digit) : bool :=
+  word_eqb (element_word e) (firstn (length (element_word e)) w).
+
+Lemma first_element_match_correct : forall e w,
+  first_element_match e w = true <->
+  exists rest, w = element_word e ++ rest.
+Proof.
+  intros e w.
+  unfold first_element_match.
+  split.
+  - intros H.
+    apply word_eqb_eq in H.
+    exists (skipn (length (element_word e)) w).
+    pose proof (firstn_skipn (length (element_word e)) w) as Hfs.
+    rewrite <- Hfs at 1.
+    f_equal.
+    symmetry.
+    exact H.
+  - intros [rest Hw].
+    apply word_eqb_eq.
+    subst w.
+    symmetry.
+    apply firstn_app_exact.
+Qed.
+
+Definition unique_first_element_b : bool :=
+  forallb (fun e1 =>
+    forallb (fun e2 =>
+      forallb (fun e3 =>
+        if element_eqb e1 e2 then true
+        else if negb (digit_eqb (element_last e1) (element_first e3)) then true
+        else negb (first_element_match e2 (element_word e3 ++ element_word H))
+      ) all_elements
+    ) all_elements
+  ) all_elements.
+
+Definition element_first_digit (e : Element) : Digit :=
+  match element_word e with
+  | [] => D1
+  | d :: _ => d
+  end.
+
+Lemma element_first_digit_correct : forall e,
+  exists rest, element_word e = element_first_digit e :: rest.
+Proof.
+  intros e; destruct e; vm_compute; eexists; reflexivity.
+Qed.
+
+Lemma first_digit_determines_prefix : forall e1 e2 w1 w2,
+  element_word e1 ++ w1 = element_word e2 ++ w2 ->
+  element_first_digit e1 = element_first_digit e2.
+Proof.
+  intros e1 e2 w1 w2 H.
+  destruct (element_first_digit_correct e1) as [r1 Hr1].
+  destruct (element_first_digit_correct e2) as [r2 Hr2].
+  rewrite Hr1 in H.
+  rewrite Hr2 in H.
+  simpl in H.
+  injection H as Hd _.
+  exact Hd.
+Qed.
+
+Definition element_word_length (e : Element) : nat :=
+  length (element_word e).
+
+Definition same_first_digit_same_element : bool :=
+  forallb (fun e1 =>
+    forallb (fun e2 =>
+      if element_eqb e1 e2 then true
+      else negb (digit_eqb (element_first_digit e1) (element_first_digit e2)) ||
+           negb (Nat.leb (element_word_length e1) (element_word_length e2)) ||
+           negb (word_eqb (element_word e1) (firstn (element_word_length e1) (element_word e2)))
+    ) all_elements
+  ) all_elements.
+
+Lemma same_first_digit_same_element_verified : same_first_digit_same_element = true.
+Proof. vm_compute. reflexivity. Qed.
+
+Lemma first_elements_equal : forall e1 e2 w1 w2,
+  element_word e1 ++ w1 = element_word e2 ++ w2 ->
+  e1 = e2.
+Proof.
+  intros e1 e2 w1 w2 H.
+  pose proof same_first_digit_same_element_verified as Hv.
+  unfold same_first_digit_same_element in Hv.
+  assert (He1 : List.In e1 all_elements) by (destruct e1; vm_compute; tauto).
+  assert (He2 : List.In e2 all_elements) by (destruct e2; vm_compute; tauto).
+  rewrite forallb_forall in Hv.
+  specialize (Hv e1 He1).
+  rewrite forallb_forall in Hv.
+  specialize (Hv e2 He2).
+  destruct (element_eqb e1 e2) eqn:Eeq.
+  - destruct e1, e2; vm_compute in Eeq; try reflexivity; discriminate.
+  - exfalso.
+    pose proof (first_digit_determines_prefix e1 e2 w1 w2 H) as Hfd.
+    rewrite Hfd in Hv.
+    rewrite digit_eqb_refl in Hv.
+    simpl in Hv.
+    destruct (Nat.leb (element_word_length e1) (element_word_length e2)) eqn:Hlen.
+    + simpl in Hv.
+      apply Nat.leb_le in Hlen.
+      assert (Hpre : firstn (element_word_length e1) (element_word e2 ++ w2) = element_word e1).
+      { rewrite <- H.
+        unfold element_word_length.
+        apply firstn_app_exact. }
+      rewrite firstn_app in Hpre.
+      unfold element_word_length in Hlen, Hpre.
+      rewrite firstn_all2 in Hpre by lia.
+      assert (Hweb : word_eqb (element_word e1) (firstn (length (element_word e1)) (element_word e2)) = true).
+      { apply word_eqb_eq. exact Hpre. }
+      fold (element_word_length e1) in Hweb.
+      rewrite Hweb in Hv.
+      simpl in Hv.
+      discriminate.
+    + apply Nat.leb_gt in Hlen.
+      assert (Hpre2 : firstn (element_word_length e2) (element_word e1 ++ w1) = element_word e2).
+      { rewrite H.
+        unfold element_word_length.
+        apply firstn_app_exact. }
+      rewrite firstn_app in Hpre2.
+      unfold element_word_length in Hlen, Hpre2.
+      rewrite firstn_all2 in Hpre2 by lia.
+      pose proof same_first_digit_same_element_verified as Hv2.
+      unfold same_first_digit_same_element in Hv2.
+      rewrite forallb_forall in Hv2.
+      specialize (Hv2 e2 He2).
+      rewrite forallb_forall in Hv2.
+      specialize (Hv2 e1 He1).
+      destruct (element_eqb e2 e1) eqn:Eeq2.
+      * destruct e1, e2; vm_compute in Eeq2; try (vm_compute in Eeq; discriminate); discriminate.
+      * rewrite <- Hfd in Hv2.
+        rewrite digit_eqb_refl in Hv2.
+        simpl in Hv2.
+        destruct (Nat.leb (element_word_length e2) (element_word_length e1)) eqn:Hlen2.
+        -- simpl in Hv2.
+           assert (Hweb2 : word_eqb (element_word e2) (firstn (length (element_word e2)) (element_word e1)) = true).
+           { apply word_eqb_eq.
+             unfold element_word_length in Hpre2.
+             exact Hpre2. }
+           fold (element_word_length e2) in Hweb2.
+           rewrite Hweb2 in Hv2.
+           simpl in Hv2.
+           discriminate.
+        -- apply Nat.leb_gt in Hlen2.
+           unfold element_word_length in Hlen, Hlen2.
+           lia.
+Qed.
+
+Theorem elements_word_injective : forall es1 es2,
+  decay_adjacent_ok es1 = true ->
+  decay_adjacent_ok es2 = true ->
+  elements_word es1 = elements_word es2 ->
+  es1 = es2.
+Proof.
+  intros es1 es2 Hadj1 Hadj2 Heq.
+  revert es2 Hadj2 Heq.
+  induction es1 as [|e1 rest1 IH]; intros es2 Hadj2 Heq.
+  - destruct es2 as [|e2 rest2].
+    + reflexivity.
+    + simpl in Heq.
+      destruct (element_word e2) as [|d ds] eqn:Ew2.
+      * destruct e2; discriminate.
+      * discriminate.
+  - destruct es2 as [|e2 rest2].
+    + simpl in Heq.
+      destruct (element_word e1) as [|d ds] eqn:Ew1.
+      * destruct e1; discriminate.
+      * discriminate.
+    + simpl in Heq.
+      assert (He1e2 : e1 = e2) by (apply first_elements_equal with (w1 := elements_word rest1) (w2 := elements_word rest2); exact Heq).
+      subst e2.
+      f_equal.
+      apply IH.
+      * destruct rest1; [reflexivity | apply decay_adjacent_ok_tail with e1; exact Hadj1].
+      * destruct rest2; [reflexivity | apply decay_adjacent_ok_tail with e1; exact Hadj2].
+      * apply app_inv_head in Heq. exact Heq.
+Qed.
+
 Print ConwayCosmological.
+
+(** * Section 32: Known Gaps and Limitations
+
+    This section documents the known limitations of the current formalization
+    relative to the full statement of Conway's Cosmological Theorem. These gaps
+    represent opportunities for future work and should be considered when
+    evaluating the completeness of this development.
+
+    ** Gap 1: Bounded Iteration Verification
+
+    The equivalence between [iterate_audio] and [iterate_decay] is verified
+    only up to n ≤ 15, while the claimed convergence bound is 18. The theorems
+    [iterate_audio_equals_decay_15] and [iterate_decay_adjacent_ok_15] do not
+    extend to the full convergence bound. A general inductive proof for
+    arbitrary n remains unformalized.
+
+    ** Gap 2: General Convergence Theorem
+
+    The development lacks a theorem of the form:
+<<
+      forall w : list Digit,
+        exists n es, n <= convergence_bound /\
+          iterate_audio n w = elements_word es /\
+          decay_adjacent_ok es = true.
+>>
+    Only specific seed convergence (D1, D2, D3) is proven. The "worst case"
+    seed requiring 18 iterations is mentioned in comments but not formally
+    verified.
+
+    ** Gap 3: Atomicity Soundness
+
+    The theorem [is_atom_b_sound] establishes:
+<<
+      is_atom_b w depth = true -> ~ splittable_upto w depth
+>>
+    However, [splittable_upto] (bounded to a specific depth) differs from the
+    Prop-level [splittable] (quantified over all n). No formal proof connects
+    bounded checking to true atomicity. The choice of [atomicity_depth := 10]
+    is empirically motivated but not proven sufficient.
+
+    ** Gap 4: Parsing Completeness
+
+    The [can_parse] function is defined but not connected to the main
+    development. Missing theorems include:
+    - [can_parse w = true <-> is_element_concatenation w]
+    - Proof that [iterate_audio] outputs are always parseable
+    - Round-trip property between parsing and [elements_word]
+
+    ** Gap 5: Transuranic Elements
+
+    The [TransuranicElement] type (Np, Pu) is defined with [transuranic_to_word]
+    using symbol [Sd], but:
+    - [Sd] is not in the [Digit] type used throughout
+    - No decay rules for transuranic elements
+    - No theorems about transuranic behavior
+    - The "two transuranic families" mentioned in the header are not formalized
+
+    ** Gap 6: Distributivity Preservation
+
+    The theorem [audioactive_elements_list] requires [decay_adjacent_ok es = true].
+    While [decay_seq_boundaries] proves this for single-element decay products,
+    there is no general proof that [flat_map element_decays] preserves
+    [decay_adjacent_ok] for arbitrary valid element lists across unbounded
+    iterations.
+
+    ** Gap 7: Unique Parsing
+
+    While [element_word_injective] proves injectivity for single elements,
+    the development now includes [elements_word_injective] for lists. However,
+    this requires the [decay_adjacent_ok] precondition; parsing uniqueness for
+    arbitrary concatenations without boundary conditions remains open.
+
+    ** Gap 8: Spectral Theory
+
+    The [degree_71_coefficients] and [conway_constant_approx] are defined but
+    never used. The characteristic polynomial of the decay matrix and its
+    connection to Conway's constant λ ≈ 1.303577... are not formalized. No
+    eigenvalue analysis or growth rate theorems are present.
+
+    ** Gap 9: Completeness of the 92 Elements
+
+    The development proves [length all_elements = 92] (existence) but does not
+    prove these are the ONLY atomic words (uniqueness/completeness). A complete
+    formalization would require:
+<<
+      forall w, is_atom w -> exists e, w = element_word e
+>>
+    This would establish that no atomic words exist outside the 92 elements.
+
+    ** Gap 10: Splitting Theory Connection
+
+    The Prop-level [is_atom] and computable [is_atom_b] are both defined, but
+    their formal equivalence is incomplete. Specifically:
+<<
+      is_atom_b w depth = true -> is_atom w
+>>
+    requires proving that [splittable_upto w depth] for sufficient depth
+    implies [splittable w], which in turn requires showing that if a split
+    exists, it can be detected within bounded iterations.
+
+    ** Gap 11: Domain Restriction
+
+    The [audioactive] function is total over [list Digit], but its behavior
+    on inputs with runs ≥ 4 differs from the standard look-and-say (counts
+    are truncated to 3 via [digit_of_nat]). The theorems are correct for
+    "day-one valid" inputs (no 4+ consecutive symbols), and [one_day_output_structure]
+    ensures closure, but this domain restriction is implicit rather than
+    enforced in type signatures or explicit preconditions.
+
+    ** Summary
+
+    This formalization establishes the internal consistency of the 92-element
+    decay system with machine-checked proofs of the decay table, closure,
+    One-Day theorem, and bounded iteration properties. The gaps above represent
+    the distance between this verified core and a complete formalization of
+    Conway's Cosmological Theorem in its strongest form.
+*)
