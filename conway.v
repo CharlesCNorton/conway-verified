@@ -1501,6 +1501,238 @@ Proof.
   intros w d. unfold last_digit. rewrite rev_app_distr. simpl. reflexivity.
 Qed.
 
+Lemma encode_digit_length : forall n, length (encode_digit n) = 1.
+Proof. reflexivity. Qed.
+
+Lemma encode_pair_length : forall k d,
+  length (encode_digit k ++ [d]) = 2.
+Proof.
+  intros k d. unfold encode_digit. reflexivity.
+Qed.
+
+Lemma say_length_aux : forall pairs,
+  length (flat_map (fun p => encode_digit (fst p) ++ [snd p]) pairs) = 2 * length pairs.
+Proof.
+  induction pairs as [|[k d] rest IH].
+  - reflexivity.
+  - cbn [flat_map fst snd length].
+    rewrite app_length.
+    rewrite encode_pair_length.
+    rewrite IH.
+    lia.
+Qed.
+
+Lemma say_length : forall w,
+  length (say encode_digit w) = 2 * length (rle w).
+Proof.
+  intros w. unfold say. apply say_length_aux.
+Qed.
+
+Lemma rle_length_pos : forall w, w <> [] -> length (rle w) >= 1.
+Proof.
+  intros w Hne.
+  destruct w as [|x xs].
+  - contradiction.
+  - simpl. pose proof (rle_aux_nonempty x 1 xs) as H.
+    destruct (rle_aux x 1 xs); [contradiction | simpl; lia].
+Qed.
+
+Lemma first_digit_cons : forall d w, first_digit (d :: w) = Some d.
+Proof. reflexivity. Qed.
+
+Lemma last_digit_decompose : forall w d,
+  last_digit w = Some d -> exists w', w = w' ++ [d].
+Proof.
+  intros w d Hld.
+  unfold last_digit in Hld.
+  destruct (rev w) as [|r rs] eqn:Hrev.
+  - discriminate.
+  - injection Hld as Hr. subst r.
+    exists (rev rs).
+    rewrite <- (rev_involutive w).
+    rewrite Hrev.
+    simpl. reflexivity.
+Qed.
+
+Lemma first_digit_decompose : forall w d,
+  first_digit w = Some d -> exists w', w = d :: w'.
+Proof.
+  intros w d Hfd.
+  destruct w as [|x xs].
+  - discriminate.
+  - simpl in Hfd. injection Hfd as Hx. subst x.
+    exists xs. reflexivity.
+Qed.
+
+(** Key lemma: rle_aux length is independent of initial count. *)
+Lemma rle_aux_length_indep : forall d k1 k2 w,
+  length (rle_aux d k1 w) = length (rle_aux d k2 w).
+Proof.
+  intros d k1 k2 w.
+  revert d k1 k2.
+  induction w as [|x xs IH]; intros d k1 k2.
+  - reflexivity.
+  - simpl.
+    destruct (digit_eqb x d).
+    + apply IH.
+    + reflexivity.
+Qed.
+
+Lemma rle_length_d_d : forall d w',
+  length (rle (d :: d :: w')) = length (rle (d :: w')).
+Proof.
+  intros d w'.
+  simpl.
+  rewrite digit_eqb_refl.
+  apply rle_aux_length_indep.
+Qed.
+
+Lemma rle_singleton_length : forall d, length (rle [d]) = 1.
+Proof. reflexivity. Qed.
+
+Lemma rle_cons_d_length_pos : forall d w', length (rle (d :: w')) >= 1.
+Proof.
+  intros d w'.
+  apply rle_length_pos.
+  discriminate.
+Qed.
+
+Lemma rle_length_singleton_merge : forall d w',
+  length (rle ([d] ++ d :: w')) < length (rle [d]) + length (rle (d :: w')).
+Proof.
+  intros d w'.
+  simpl app.
+  rewrite rle_length_d_d.
+  rewrite rle_singleton_length.
+  pose proof (rle_cons_d_length_pos d w') as H.
+  lia.
+Qed.
+
+(** Key length inequality for say with matching boundaries (singleton case). *)
+Lemma say_length_singleton_lt : forall d w',
+  length (say encode_digit ([d] ++ d :: w')) <
+  length (say encode_digit [d]) + length (say encode_digit (d :: w')).
+Proof.
+  intros d w'.
+  rewrite !say_length.
+  pose proof (rle_length_singleton_merge d w') as H.
+  lia.
+Qed.
+
+(** When lengths differ, lists differ. *)
+Lemma length_neq_lists_neq : forall {A} (l1 l2 : list A),
+  length l1 <> length l2 -> l1 <> l2.
+Proof.
+  intros A l1 l2 Hlen Heq.
+  subst. apply Hlen. reflexivity.
+Qed.
+
+(** say does not distribute for singleton with matching boundary. *)
+Lemma say_singleton_boundary_not_dist : forall d w',
+  say encode_digit ([d] ++ d :: w') <> say encode_digit [d] ++ say encode_digit (d :: w').
+Proof.
+  intros d w'.
+  apply length_neq_lists_neq.
+  rewrite app_length.
+  pose proof (say_length_singleton_lt d w') as H.
+  lia.
+Qed.
+
+(** For the general case, we use a key structural property:
+    When w1 = w1' ++ [d] and w2 = d :: w2', the rle length is strictly
+    less than the sum because the boundary d's merge into one run.
+
+    We prove this using the structure w1 ++ w2 = w1' ++ [d] ++ d :: w2'
+    = w1' ++ (d :: d :: w2'), where the two d's at the boundary merge. *)
+
+(** Helper: rle_aux length when prepending *)
+Lemma rle_aux_length_cons_same : forall d k w,
+  length (rle_aux d k (d :: w)) = length (rle_aux d (Datatypes.S k) w).
+Proof.
+  intros d k w. simpl. rewrite digit_eqb_refl. reflexivity.
+Qed.
+
+Lemma rle_aux_length_cons_diff : forall x d k w,
+  x <> d -> length (rle_aux d k (x :: w)) = Datatypes.S (length (rle_aux x 1 w)).
+Proof.
+  intros x d k w Hneq.
+  simpl. rewrite digit_eqb_neq by exact Hneq.
+  reflexivity.
+Qed.
+
+Lemma last_digit_cons_nonempty : forall x y ys,
+  last_digit (x :: y :: ys) = last_digit (y :: ys).
+Proof.
+  intros x y ys.
+  unfold last_digit.
+  simpl rev.
+  destruct (rev ys) as [|r rs]; reflexivity.
+Qed.
+
+(** Key lemma: rle length with matching boundary.
+    length(rle(w1 ++ d :: w2')) < length(rle w1) + length(rle(d :: w2'))
+    when last_digit w1 = Some d.
+
+    This is proven using the fact that rle_aux on the concatenation merges
+    the boundary runs, resulting in one fewer pair. *)
+Lemma rle_length_merge_general : forall w1 w2' d,
+  w1 <> [] ->
+  last_digit w1 = Some d ->
+  length (rle (w1 ++ d :: w2')) < length (rle w1) + length (rle (d :: w2')).
+Proof.
+  intro w1.
+  induction w1 as [w1 IH] using (well_founded_induction (Wf_nat.well_founded_ltof _ (@length Digit))).
+  intros w2' d Hne1 Hlast.
+  destruct w1 as [|x xs].
+  - contradiction.
+  - destruct xs as [|y ys].
+    + simpl in Hlast. injection Hlast as Hx. subst x.
+      apply rle_length_singleton_merge.
+    + assert (Hys_last : last_digit (y :: ys) = Some d).
+      { rewrite <- last_digit_cons_nonempty with (x := x). exact Hlast. }
+      destruct (digit_eqb y x) eqn:Eyx.
+      * apply digit_eqb_eq in Eyx. subst y.
+        specialize (IH (x :: ys) ltac:(unfold ltof; simpl; lia) w2' d ltac:(discriminate) Hys_last).
+        assert (Heq1 : length (rle ((x :: x :: ys) ++ d :: w2')) = length (rle ((x :: ys) ++ d :: w2'))).
+        { simpl app. simpl rle.
+          rewrite digit_eqb_refl.
+          rewrite rle_aux_length_indep with (k2 := 1).
+          reflexivity. }
+        assert (Heq2 : length (rle (x :: x :: ys)) = length (rle (x :: ys))).
+        { simpl rle.
+          rewrite digit_eqb_refl.
+          rewrite rle_aux_length_indep with (k2 := 1).
+          reflexivity. }
+        rewrite Heq1. rewrite Heq2.
+        exact IH.
+      * apply digit_eqb_false_neq in Eyx.
+        assert (Hyx : y <> x) by exact Eyx.
+        specialize (IH (y :: ys) ltac:(unfold ltof; simpl; lia) w2' d ltac:(discriminate) Hys_last).
+        simpl rle in IH.
+        simpl app. simpl rle.
+        rewrite digit_eqb_neq by (intro Heq; apply Hyx; exact Heq).
+        simpl.
+        pose proof (rle_cons_d_length_pos d w2') as Hpos.
+        pose proof (rle_aux_nonempty y 1 ys) as Hne.
+        destruct (rle_aux y 1 ys) as [|[k' s'] rest'] eqn:Hrle.
+        -- exfalso. apply Hne. reflexivity.
+        -- simpl in IH |- *. lia.
+Qed.
+
+(** General say does not distribute when boundaries match *)
+Lemma say_general_boundary_not_dist : forall w1 w2' d,
+  w1 <> [] ->
+  last_digit w1 = Some d ->
+  say encode_digit (w1 ++ d :: w2') <> say encode_digit w1 ++ say encode_digit (d :: w2').
+Proof.
+  intros w1 w2' d Hne1 Hlast.
+  apply length_neq_lists_neq.
+  rewrite app_length.
+  rewrite !say_length.
+  pose proof (rle_length_merge_general w1 w2' d Hne1 Hlast) as H.
+  lia.
+Qed.
+
 (** * Section 20: General Audioactive Over Element Lists *)
 
 Lemma audioactive_nil : audioactive [] = [].
@@ -2045,15 +2277,17 @@ Qed.
     The general case follows by the same reasoning: the head of the concatenated
     result differs from the head of the distributed result.
 
-    AXIOM JUSTIFICATION: This property is computationally verified for all w1
-    ending with d and w2 starting with d. The proof follows from the fact that
-    rle_aux merges identical adjacent symbols, changing the count at the boundary
-    from (1,d)::(1,d)::... to (n,d)::... where n >= 2. This changes the output
-    from [D1;d;D1;d;...] to [D2;d;...] or [D3;d;...], proving inequality. *)
-Axiom say_same_boundary_not_dist : forall w1 w2 d,
+    This is now proven via rle_length_merge_general and say_general_boundary_not_dist. *)
+Lemma say_same_boundary_not_dist : forall w1 w2 d,
   w1 <> [] -> w2 <> [] ->
   last_digit w1 = Some d -> first_digit w2 = Some d ->
   say encode_digit (w1 ++ w2) <> say encode_digit w1 ++ say encode_digit w2.
+Proof.
+  intros w1 w2 d Hne1 Hne2 Hlast Hfirst.
+  destruct (first_digit_decompose w2 d Hfirst) as [w2' Hw2].
+  subst w2.
+  apply say_general_boundary_not_dist; assumption.
+Qed.
 
 (** At depth >= 1 with matching boundaries, say_iter doesn't distribute.
     This follows from say_same_boundary_not_dist at depth 1: once the outputs
