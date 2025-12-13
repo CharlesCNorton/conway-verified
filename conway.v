@@ -2297,12 +2297,310 @@ Qed.
 
     For element atomicity (atomicity_depth = 10), this is verified computationally
     by the all_elements_atomic theorem which checks is_atom_b for each element. *)
-Axiom say_iter_same_boundary_not_dist : forall w1 w2 d depth,
+
+Definition decode_rle (pairs : list (nat * Digit)) : list Digit :=
+  flat_map (fun p => repeat (snd p) (fst p)) pairs.
+
+Lemma repeat_snoc : forall (d : Digit) k,
+  repeat d k ++ [d] = d :: repeat d k.
+Proof.
+  intros d k.
+  induction k as [|k' IH]; simpl.
+  - reflexivity.
+  - f_equal.
+    exact IH.
+Qed.
+
+Lemma repeat_S_app : forall (d : Digit) k xs,
+  repeat d (Datatypes.S k) ++ xs = repeat d k ++ (d :: xs).
+Proof.
+  intros d k xs.
+  induction k as [|k' IH]; simpl.
+  - reflexivity.
+  - f_equal.
+    exact IH.
+Qed.
+
+Lemma decode_rle_app : forall pairs1 pairs2,
+  decode_rle (pairs1 ++ pairs2) = decode_rle pairs1 ++ decode_rle pairs2.
+Proof.
+  intros pairs1 pairs2.
+  unfold decode_rle.
+  rewrite flat_map_app.
+  reflexivity.
+Qed.
+
+Lemma decode_rle_aux : forall cur k w,
+  decode_rle (rle_aux cur k w) = repeat cur k ++ w.
+Proof.
+  intros cur k w.
+  revert cur k.
+  induction w as [|x xs IH]; intros cur k; simpl.
+  - unfold decode_rle.
+    simpl.
+    rewrite app_nil_r.
+    reflexivity.
+  - destruct (digit_eqb x cur) eqn:E.
+    + apply digit_eqb_eq in E.
+      subst x.
+      rewrite IH.
+      rewrite repeat_S_app.
+      reflexivity.
+    + unfold decode_rle at 1.
+      simpl.
+      fold (decode_rle (rle_aux x 1 xs)).
+      rewrite IH.
+      reflexivity.
+Qed.
+
+Lemma decode_rle_rle : forall w, decode_rle (rle w) = w.
+Proof.
+  intros w.
+  destruct w as [|x xs].
+  - reflexivity.
+  - simpl.
+    rewrite decode_rle_aux.
+    simpl.
+    reflexivity.
+Qed.
+
+Lemma has_four_consecutive_tail : forall a w,
+  has_four_consecutive (a :: w) = false ->
+  has_four_consecutive w = false.
+Proof.
+  intros a w H.
+  destruct w as [|b w'].
+  - reflexivity.
+  - destruct w' as [|c w''].
+    + reflexivity.
+    + destruct w'' as [|d w'''].
+      * reflexivity.
+      * simpl in H.
+        apply orb_false_iff in H.
+        destruct H as [_ H].
+        exact H.
+Qed.
+
+Lemma has_four_consecutive_suffix : forall w1 w2,
+  has_four_consecutive (w1 ++ w2) = false ->
+  has_four_consecutive w2 = false.
+Proof.
+  induction w1 as [|a w1' IH]; intros w2 H.
+  - exact H.
+  - apply IH.
+    apply has_four_consecutive_tail with a.
+    exact H.
+Qed.
+
+Lemma rle_aux_counts_le_3 : forall cur k w,
+  k <= 3 ->
+  has_four_consecutive (repeat cur k ++ w) = false ->
+  Forall (fun p => fst p <= 3) (rle_aux cur k w).
+Proof.
+  intros cur k w.
+  revert cur k.
+  induction w as [|x xs IH]; intros cur k Hk Hno4.
+  - simpl.
+    constructor.
+    + simpl.
+      lia.
+    + constructor.
+  - simpl.
+    destruct (digit_eqb x cur) eqn:E.
+    + apply digit_eqb_eq in E.
+      subst x.
+      apply IH.
+      * destruct k as [|[|[|[|k']]]]; try lia.
+        exfalso.
+        simpl in Hno4.
+        rewrite !digit_eqb_refl in Hno4.
+        simpl in Hno4.
+        discriminate.
+      * rewrite repeat_S_app.
+        exact Hno4.
+    + constructor.
+      * simpl.
+        lia.
+      * apply IH.
+        -- lia.
+        -- change (repeat x 1 ++ xs) with (x :: xs).
+           apply has_four_consecutive_suffix with (repeat cur k).
+           exact Hno4.
+Qed.
+
+Lemma rle_counts_le_3 : forall w,
+  has_four_consecutive w = false ->
+  Forall (fun p => fst p <= 3) (rle w).
+Proof.
+  intros w H.
+  destruct w as [|x xs].
+  - constructor.
+  - simpl.
+    apply rle_aux_counts_le_3.
+    + lia.
+    + simpl.
+      exact H.
+Qed.
+
+Lemma rle_counts_positive_forall : forall w,
+  Forall (fun p => fst p >= 1) (rle w).
+Proof.
+  intros w.
+  destruct w as [|x xs].
+  - constructor.
+  - simpl.
+    apply rle_aux_count_positive.
+    lia.
+Qed.
+
+Lemma rle_counts_bounds : forall w,
+  has_four_consecutive w = false ->
+  Forall (fun p => 1 <= fst p <= 3) (rle w).
+Proof.
+  intros w Hno4.
+  pose proof (rle_counts_le_3 w Hno4) as Hle.
+  pose proof (rle_counts_positive_forall w) as Hge.
+  clear Hno4.
+  induction (rle w) as [|[n d] rest IH].
+  - constructor.
+  - inversion Hle as [|? ? Hn_le Hrest_le].
+    subst.
+    inversion Hge as [|? ? Hn_ge Hrest_ge].
+    subst.
+    constructor.
+    + simpl in Hn_le, Hn_ge |- *.
+      lia.
+    + apply IH; assumption.
+Qed.
+
+Lemma encode_pair_eq : forall n1 d1 n2 d2 rest1 rest2,
+  1 <= n1 <= 3 -> 1 <= n2 <= 3 ->
+  encode_digit n1 ++ d1 :: rest1 = encode_digit n2 ++ d2 :: rest2 ->
+  n1 = n2 /\ d1 = d2 /\ rest1 = rest2.
+Proof.
+  intros n1 d1 n2 d2 rest1 rest2 [Hn1l Hn1h] [Hn2l Hn2h] H.
+  destruct n1 as [|[|[|[|n1']]]]; try lia;
+  destruct n2 as [|[|[|[|n2']]]]; try lia;
+  simpl in H; try discriminate;
+  injection H as Hd Hrest;
+  repeat split; (reflexivity || assumption).
+Qed.
+
+Lemma encode_pairs_injective_small : forall pairs1 pairs2,
+  Forall (fun p => 1 <= fst p <= 3) pairs1 ->
+  Forall (fun p => 1 <= fst p <= 3) pairs2 ->
+  flat_map (fun p => encode_digit (fst p) ++ [snd p]) pairs1 =
+  flat_map (fun p => encode_digit (fst p) ++ [snd p]) pairs2 ->
+  pairs1 = pairs2.
+Proof.
+  induction pairs1 as [|[n1 d1] rest1 IH]; intros pairs2 Hf1 Hf2 H.
+  - destruct pairs2 as [|[n2 d2] rest2].
+    + reflexivity.
+    + simpl in H.
+      inversion Hf2 as [|? ? [Hn2l Hn2h] ?].
+      subst.
+      destruct n2 as [|[|[|[|n2']]]]; try lia; simpl in H; discriminate.
+  - destruct pairs2 as [|[n2 d2] rest2].
+    + simpl in H.
+      inversion Hf1 as [|? ? [Hn1l Hn1h] ?].
+      subst.
+      destruct n1 as [|[|[|[|n1']]]]; try lia; simpl in H; discriminate.
+    + simpl in H.
+      inversion Hf1 as [|? ? Hp1 Hrest1].
+      subst.
+      inversion Hf2 as [|? ? Hp2 Hrest2].
+      subst.
+      pose proof (encode_pair_eq n1 d1 n2 d2
+        (flat_map (fun p => encode_digit (fst p) ++ [snd p]) rest1)
+        (flat_map (fun p => encode_digit (fst p) ++ [snd p]) rest2)
+        Hp1 Hp2 H) as [Hn [Hd Hrest]].
+      subst.
+      f_equal.
+      apply IH; assumption.
+Qed.
+
+Lemma say_neq_concat_no_four : forall A B C,
+  A <> B ++ C ->
+  has_four_consecutive A = false ->
+  has_four_consecutive B = false ->
+  has_four_consecutive C = false ->
+  say encode_digit A <> say encode_digit B ++ say encode_digit C.
+Proof.
+  intros A B C Hneq HnoA HnoB HnoC.
+  intro Heq.
+  apply Hneq.
+  unfold say in Heq.
+  rewrite <- flat_map_app in Heq.
+  pose proof (rle_counts_bounds A HnoA) as HcA.
+  pose proof (rle_counts_bounds B HnoB) as HcB.
+  pose proof (rle_counts_bounds C HnoC) as HcC.
+  assert (Hc_all_BC : Forall (fun p => 1 <= fst p <= 3) (rle B ++ rle C)).
+  { apply Forall_app.
+    split; assumption. }
+  pose proof (encode_pairs_injective_small (rle A) (rle B ++ rle C) HcA Hc_all_BC Heq) as Hrle_eq.
+  transitivity (decode_rle (rle A)).
+  - symmetry.
+    apply decode_rle_rle.
+  - rewrite Hrle_eq.
+    rewrite decode_rle_app.
+    rewrite !decode_rle_rle.
+    reflexivity.
+Qed.
+
+Lemma say_iter_say_comm : forall n w,
+  say_iter encode_digit n (say encode_digit w) = say encode_digit (say_iter encode_digit n w).
+Proof.
+  induction n as [|n' IH]; intros w.
+  - reflexivity.
+  - simpl.
+    rewrite IH.
+    reflexivity.
+Qed.
+
+Lemma say_iter_no_four : forall n w,
+  has_four_consecutive (say_iter encode_digit (Datatypes.S n) w) = false.
+Proof.
+  intros n w.
+  simpl.
+  rewrite say_iter_say_comm.
+  apply one_day_output_structure.
+Qed.
+
+Lemma say_iter_neq_concat : forall n A B C,
+  A <> B ++ C ->
+  has_four_consecutive A = false ->
+  has_four_consecutive B = false ->
+  has_four_consecutive C = false ->
+  say_iter encode_digit n A <> say_iter encode_digit n B ++ say_iter encode_digit n C.
+Proof.
+  induction n as [|n' IH]; intros A B C Hneq HnoA HnoB HnoC.
+  - simpl.
+    exact Hneq.
+  - simpl.
+    apply IH.
+    + apply say_neq_concat_no_four; assumption.
+    + apply one_day_output_structure.
+    + apply one_day_output_structure.
+    + apply one_day_output_structure.
+Qed.
+
+Lemma say_iter_same_boundary_not_dist : forall w1 w2 d depth,
   depth >= 1 ->
   w1 <> [] -> w2 <> [] ->
   last_digit w1 = Some d -> first_digit w2 = Some d ->
   say_iter encode_digit depth (w1 ++ w2) <>
   say_iter encode_digit depth w1 ++ say_iter encode_digit depth w2.
+Proof.
+  intros w1 w2 d depth Hdepth Hne1 Hne2 Hlast Hfirst.
+  destruct depth as [|depth'].
+  - lia.
+  - simpl.
+    apply say_iter_neq_concat.
+    + apply say_same_boundary_not_dist with d; assumption.
+    + apply one_day_output_structure.
+    + apply one_day_output_structure.
+    + apply one_day_output_structure.
+Qed.
 
 (** Soundness: is_atom_b = true implies not splittable_upto (for depth >= 1)
     Note: At depth 0, say_iter is identity so all splits trivially work.
