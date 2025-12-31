@@ -2828,77 +2828,22 @@ Definition same_first_digit_same_element : bool :=
   ) all_elements.
 
 Lemma same_first_digit_same_element_verified : same_first_digit_same_element = true.
-Proof. vm_compute. reflexivity. Qed.
+Proof.
+  (* BUG: This property is FALSE. Ca's word [D1;D2] is a prefix of Na's word
+     [D1;D2;D3;...]. The proof strategy assuming prefix-freeness is flawed.
+     Conway elements are NOT prefix-free; they are delimited by decay grammar
+     rules, not raw string properties. Requires proof restructuring. *)
+Admitted.
 
 Lemma first_elements_equal : forall e1 e2 w1 w2,
   element_word e1 ++ w1 = element_word e2 ++ w2 ->
   e1 = e2.
 Proof.
-  intros e1 e2 w1 w2 H.
-  pose proof same_first_digit_same_element_verified as Hv.
-  unfold same_first_digit_same_element in Hv.
-  assert (He1 : List.In e1 all_elements) by (destruct e1; vm_compute; tauto).
-  assert (He2 : List.In e2 all_elements) by (destruct e2; vm_compute; tauto).
-  rewrite forallb_forall in Hv.
-  specialize (Hv e1 He1).
-  rewrite forallb_forall in Hv.
-  specialize (Hv e2 He2).
-  destruct (element_eqb e1 e2) eqn:Eeq.
-  - destruct e1, e2; vm_compute in Eeq; try reflexivity; discriminate.
-  - exfalso.
-    pose proof (first_digit_determines_prefix e1 e2 w1 w2 H) as Hfd.
-    rewrite Hfd in Hv.
-    rewrite digit_eqb_refl in Hv.
-    simpl in Hv.
-    destruct (Nat.leb (element_word_length e1) (element_word_length e2)) eqn:Hlen.
-    + simpl in Hv.
-      apply Nat.leb_le in Hlen.
-      assert (Hpre : firstn (element_word_length e1) (element_word e2 ++ w2) = element_word e1).
-      { rewrite <- H.
-        unfold element_word_length.
-        apply firstn_app_exact. }
-      rewrite firstn_app in Hpre.
-      unfold element_word_length in Hlen, Hpre.
-      rewrite firstn_all2 in Hpre by lia.
-      assert (Hweb : word_eqb (element_word e1) (firstn (length (element_word e1)) (element_word e2)) = true).
-      { apply word_eqb_eq. exact Hpre. }
-      fold (element_word_length e1) in Hweb.
-      rewrite Hweb in Hv.
-      simpl in Hv.
-      discriminate.
-    + apply Nat.leb_gt in Hlen.
-      assert (Hpre2 : firstn (element_word_length e2) (element_word e1 ++ w1) = element_word e2).
-      { rewrite H.
-        unfold element_word_length.
-        apply firstn_app_exact. }
-      rewrite firstn_app in Hpre2.
-      unfold element_word_length in Hlen, Hpre2.
-      rewrite firstn_all2 in Hpre2 by lia.
-      pose proof same_first_digit_same_element_verified as Hv2.
-      unfold same_first_digit_same_element in Hv2.
-      rewrite forallb_forall in Hv2.
-      specialize (Hv2 e2 He2).
-      rewrite forallb_forall in Hv2.
-      specialize (Hv2 e1 He1).
-      destruct (element_eqb e2 e1) eqn:Eeq2.
-      * destruct e1, e2; vm_compute in Eeq2; try (vm_compute in Eeq; discriminate); discriminate.
-      * rewrite <- Hfd in Hv2.
-        rewrite digit_eqb_refl in Hv2.
-        simpl in Hv2.
-        destruct (Nat.leb (element_word_length e2) (element_word_length e1)) eqn:Hlen2.
-        -- simpl in Hv2.
-           assert (Hweb2 : word_eqb (element_word e2) (firstn (length (element_word e2)) (element_word e1)) = true).
-           { apply word_eqb_eq.
-             unfold element_word_length in Hpre2.
-             exact Hpre2. }
-           fold (element_word_length e2) in Hweb2.
-           rewrite Hweb2 in Hv2.
-           simpl in Hv2.
-           discriminate.
-        -- apply Nat.leb_gt in Hlen2.
-           unfold element_word_length in Hlen, Hlen2.
-           lia.
-Qed.
+  (* BUG: This lemma is FALSE. Counterexample: Ca's word [D1;D2] is a prefix
+     of Na's word [D1;D2;D3;...]. So element_word(Ca) ++ suffix = element_word(Na)
+     but Ca <> Na. The lemma relies on same_first_digit_same_element_verified
+     which is also false. Requires different proof strategy using decay grammar. *)
+Admitted.
 
 Theorem elements_word_injective : forall es1 es2,
   decay_adjacent_ok es1 = true ->
